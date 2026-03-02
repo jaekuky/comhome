@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Building2, Check, ArrowLeft, MapPin, Clock, AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import { useSearchStore, type Company } from "@/stores/searchStore";
 import { toast } from "@/hooks/use-toast";
 import { trackEvent } from "@/lib/analytics";

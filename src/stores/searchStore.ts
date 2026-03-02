@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { type NeighborhoodResult } from '@/components/result/NeighborhoodCard';
 
 export interface Company {
   id: string;
@@ -15,6 +16,10 @@ interface SearchState {
   recentSearches: Company[];
   addRecentSearch: (company: Company) => void;
   loadRecentSearches: () => void;
+  compareList: NeighborhoodResult[];
+  addToCompare: (item: NeighborhoodResult) => boolean;
+  removeFromCompare: (id: string) => void;
+  clearCompare: () => void;
 }
 
 const RECENT_KEY = 'comhome_recent_searches';
@@ -39,4 +44,16 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       }
     } catch {}
   },
+  compareList: [],
+  addToCompare: (item) => {
+    const list = get().compareList;
+    if (list.length >= 3) return false;
+    if (list.some((c) => c.id === item.id)) return false;
+    set({ compareList: [...list, item] });
+    return true;
+  },
+  removeFromCompare: (id) => {
+    set({ compareList: get().compareList.filter((c) => c.id !== id) });
+  },
+  clearCompare: () => set({ compareList: [] }),
 }));

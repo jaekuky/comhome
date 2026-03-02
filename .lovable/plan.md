@@ -1,71 +1,73 @@
 
 
-## /result 페이지 전면 리뉴얼 계획
+## 동네 상세, 비용 비교, 매물 리스트 페이지 구현 계획
 
-### 1. 데이터베이스 변경 (2개 migration)
+### 1. 데이터베이스 변경
 
-**neighborhoods 테이블 생성:**
-- `id`, `name`, `district`, `city`, `avg_rent` (만원), `latitude`, `longitude`, `transit_lines` (jsonb), `description`
+**housing_listings 테이블 생성** (migration):
+- `id`, `neighborhood_id` (FK → neighborhoods), `type` (text: "원룸"/"투룸"/"쓰리룸+"), `deposit` (만원), `monthly_rent` (만원), `area_sqm` (float), `floor` (int), `distance_to_station` (int, 도보 분), `description`
 - RLS: public SELECT
 
-**recommended_neighborhoods 테이블 생성:**
-- `id`, `company_id` (FK → companies), `neighborhood_id` (FK → neighborhoods), `rank`, `commute_minutes`, `commute_route` (text), `savings_amount` (만원)
-- RLS: public SELECT
+**시드 데이터**: 동네별 5~8개 매물, 총 ~100개 레코드
 
-**시드 데이터:** 주요 회사별 7~10개 추천 동네 매핑 (총 ~20개 동네, ~60개 추천 레코드)
+### 2. 상태 관리 (Zustand store 확장)
 
-### 2. ResultPage 전면 재구성
+`searchStore.ts`에 비교 목록 추가:
+- `compareList: NeighborhoodResult[]` (최대 3개)
+- `addToCompare`, `removeFromCompare`, `clearCompare`
 
-페이지를 3단계 상태로 구성:
+### 3. /neighborhood/:id 페이지 (5개 섹션)
 
-**Phase 1 - Narrative Loading (2.4초)**
-- 4단계 메시지가 0.6초 간격으로 전환
-- 프로그레스 바 25%씩 채워짐 (gradient-primary)
-- 회사명을 메시지에 동적 삽입
+**데이터 로딩**: neighborhood + recommended_neighborhoods (company_id from searchStore) + housing_listings를 Supabase에서 fetch
 
-**Phase 2 - 결과 표시**
-순서대로 렌더링:
+**섹션 구성**:
 
-1. **인사이트 배너** (Loss Aversion): "현재 통근 50분 → 추천 동네로 이사하면 연간 396시간 절약" - 연한 블루 그라데이션 배경
+1. **헤더**: 동네 이름 대형 타이틀, 구/시 태그, 통근 시간 배지, 뒤로가기 버튼
 
-2. **요약 카드 3개** (가로 스크롤, `overflow-x-auto`):
-   - 추천 동네 수 (카운트업 0→N)
-   - 평균 통근 시간 (카운트다운 60→실제값)
-   - 월 절감 가능액 (카운트업 0→N만원)
-   - 각 카드에 아이콘 + 수치 + 라벨
+2. **통근 경로 카드**: 세로 타임라인 (출발지 → 도착지), 이용 노선, 도어투도어 시간, 첫차/막차 (목업), 혼잡도 배지 (목업)
 
-3. **필터 탭**: "추천순" | "통근시간순" | "월세순" - 탭 전환 시 리스트 재정렬
+3. **비용 비교 테이블** (Anchoring Effect): 현재 거주지(서울 평균) vs 추천 동네 비교 — 월세, 교통비, 총 주거비, 절감액 강조, 연간 절감 예상액 하단 크게 표시
 
-4. **동네 카드 리스트**: 
-   - 이름 + 구/시 태그
-   - 통근 시간 배지 (초록 배경)
-   - 평균 월세, 절감액 (초록 텍스트)
-   - "자세히 보기" → `/neighborhood/:id`
-   - Intersection Observer로 peek-a-boo 애니메이션
+4. **생활 정보 탭** (교통/생활/안전): 각 탭에 아이콘 + 수치 + 등급 형태 목업 데이터
 
-5. **공유 버튼**: 상단에 Share 아이콘, 클릭 시 `navigator.clipboard` + 토스트
+5. **매물 미리보기**: housing_listings에서 3개 가로 스크롤 카드 + "전체 매물 보기" 버튼 → /housing/:neighborhoodId
 
-**EC-004 처리**: 결과 0건 → "30분 이내 추천 동네를 찾지 못했어요" + 40분 확장 버튼
+**하단 고정 CTA**: "비교하기" 버튼 (compareList에 추가, 최대 3개)
 
-### 3. 컴포넌트 분리
+### 4. /compare 비용 비교 페이지
+
+- compareList에서 2~3개 동네를 나란히 비교 테이블
+- 비교 항목: 통근시간, 월세, 교통비, 총비용, 생활편의, 안전등급
+- 각 항목 최적값 초록색 강조, 종합 추천 점수 (100점 만점, 목업 계산)
+- 빈 상태: "결과 페이지에서 동네를 선택해주세요" + 이동 버튼
+
+### 5. /housing/:neighborhoodId 매물 리스트 페이지
+
+- **필터 바**: 보증금 범위 슬라이더, 월세 범위 슬라이더, 면적 필터 탭 (원룸/투룸/쓰리룸+)
+- **매물 카드 리스트**: placeholder 이미지 + 보증금/월세 + 면적 + 층수 + 역 도보거리
+- 카드 클릭 시 Dialog 모달 "곧 오픈 예정" 안내
+- Supabase에서 neighborhood_id로 필터링 쿼리
+
+### 6. 컴포넌트 구조
 
 ```text
-src/pages/ResultPage.tsx          (메인 오케스트레이터)
-src/components/result/
-  NarrativeLoading.tsx            (로딩 애니메이션)
-  SummaryCards.tsx                (카운터 애니메이션 요약)
-  InsightBanner.tsx               (Loss Aversion 배너)
-  NeighborhoodCard.tsx            (개별 동네 카드)
-  FilterTabs.tsx                  (정렬 필터)
+src/pages/NeighborhoodPage.tsx        (전면 리뉴얼)
+src/components/neighborhood/
+  CommuteTimeline.tsx                 (통근 경로 타임라인)
+  CostComparisonTable.tsx             (비용 비교 테이블)
+  LivingInfoTabs.tsx                  (생활 정보 탭)
+  HousingPreview.tsx                  (매물 미리보기)
+  BottomCTA.tsx                       (하단 고정 바)
+
+src/pages/ComparePage.tsx             (전면 리뉴얼)
+src/pages/HousingPage.tsx             (전면 리뉴얼)
 ```
 
-### 4. 커스텀 훅
+### 7. 구현 순서
 
-- `useCountUp(target, duration)` - 숫자 카운트업 애니메이션 훅
-- Supabase 쿼리: `recommended_neighborhoods` JOIN `neighborhoods` WHERE `company_id` = selected
-
-### 5. 추가 CSS
-
-- `animate-fade-up` keyframe (translateY(20px) → 0)
-- peek-a-boo용 Intersection Observer 클래스
+1. DB migration (housing_listings) + 시드 데이터
+2. Zustand compare store 확장
+3. NeighborhoodPage 전면 구현 (5개 서브 컴포넌트)
+4. ComparePage 구현
+5. HousingPage 구현
 

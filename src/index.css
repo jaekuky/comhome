@@ -121,4 +121,22 @@
   .mobile-container {
     @apply mx-auto w-full max-w-[480px] px-4;
   }
+
+  @keyframes breathing {
+    0%, 100% { box-shadow: 0 0 0 0 hsl(217, 82%, 51%, 0); }
+    50% { box-shadow: 0 0 0 4px hsl(217, 82%, 51%, 0.08); }
+  }
+
+  .animate-breathing {
+    animation: breathing 3s ease-in-out infinite;
+  }
+
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.4s ease-out forwards;
+  }
 }

@@ -1,5 +1,6 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, Clock, Wallet, Star } from "lucide-react";
+import { type Company } from "@/stores/searchStore";
 
 const mockResults = [
   { id: "mangwon", name: "망원동", time: 22, rent: 55, score: 92 },
@@ -9,9 +10,11 @@ const mockResults = [
 
 const ResultPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const company = (location.state as { company?: Company })?.company;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background animate-slide-up">
       <div className="mobile-container py-6 space-y-6">
         <button
           onClick={() => navigate(-1)}
@@ -23,7 +26,21 @@ const ResultPage = () => {
 
         <div>
           <h1 className="text-xl font-bold text-foreground">추천 동네</h1>
-          <p className="text-sm text-muted-foreground mt-1">통근 30분 이내 최적의 동네 3곳</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {company
+              ? `${company.name} 기준 통근 30분 이내 최적의 동네`
+              : "통근 30분 이내 최적의 동네 3곳"}
+          </p>
+        </div>
+
+        {/* Progress indicator */}
+        <div className="rounded-xl bg-primary/5 border border-primary/10 p-4">
+          <div className="flex items-center gap-3">
+            <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
+              <div className="h-full gradient-primary rounded-full animate-pulse" style={{ width: "100%" }} />
+            </div>
+            <span className="text-xs font-medium text-primary">분석 완료</span>
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -31,7 +48,8 @@ const ResultPage = () => {
             <button
               key={r.id}
               onClick={() => navigate(`/neighborhood/${r.id}`)}
-              className="w-full rounded-xl bg-card p-5 shadow-card hover:shadow-card-hover transition-all text-left"
+              className="w-full rounded-xl bg-card p-5 shadow-card hover:shadow-card-hover transition-all text-left animate-fade-up"
+              style={{ animationDelay: `${i * 0.1}s` }}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">

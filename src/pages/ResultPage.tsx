@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { type Company } from "@/stores/searchStore";
 import { toast } from "@/hooks/use-toast";
+import { trackEvent } from "@/lib/analytics";
+import OnboardingTooltip from "@/components/OnboardingTooltip";
 import NarrativeLoading from "@/components/result/NarrativeLoading";
 import InsightBanner from "@/components/result/InsightBanner";
 import SummaryCards from "@/components/result/SummaryCards";
@@ -19,6 +21,12 @@ const ResultPage = () => {
   const [phase, setPhase] = useState<"loading" | "results" | "empty">("loading");
   const [results, setResults] = useState<NeighborhoodResult[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("rank");
+
+  useEffect(() => {
+    if (company) {
+      document.title = `${company.name} 추천 동네 | ComHome`;
+    }
+  }, [company]);
 
   const fetchResults = useCallback(async (companyId: string) => {
     const { data, error } = await supabase
@@ -67,10 +75,15 @@ const ResultPage = () => {
   }, [company, fetchResults]);
 
   const handleLoadingComplete = useCallback(() => {
-    setPhase(results.length > 0 ? "results" : "empty");
-  }, [results]);
+    const next = results.length > 0 ? "results" : "empty";
+    setPhase(next);
+    if (next === "results") {
+      trackEvent("analysis_completed", { company_id: company?.id, count: results.length });
+    }
+  }, [results, company]);
 
   const handleShare = async () => {
+    trackEvent("share_clicked", { company_id: company?.id });
     try {
       await navigator.clipboard.writeText(window.location.href);
       toast({ title: "링크가 복사되었습니다!", description: "친구에게 공유해보세요" });
@@ -115,12 +128,17 @@ const ResultPage = () => {
           <button
             onClick={() => navigate(-1)}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
+            aria-label="뒤로가기"
           >
             <ArrowLeft className="h-4 w-4" />
             뒤로가기
           </button>
           {phase === "results" && (
-            <button onClick={handleShare} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors">
+            <button
+              onClick={handleShare}
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
+              aria-label="결과 공유하기"
+            >
               <Share2 className="h-4 w-4" />
               공유
             </button>
@@ -140,7 +158,16 @@ const ResultPage = () => {
 
             <InsightBanner currentCommute={50} avgRecommendedCommute={avgCommute} />
             <SummaryCards neighborhoodCount={results.length} avgCommute={avgCommute} avgSavings={avgSavings} />
-            <FilterTabs value={sortMode} onChange={setSortMode} />
+
+            {/* Filter with onboarding */}
+            <div className="relative">
+              <OnboardingTooltip
+                id="result_filter"
+                text="정렬 기준을 바꿔보세요 🔄"
+                position="top"
+              />
+              <FilterTabs value={sortMode} onChange={setSortMode} />
+            </div>
 
             <div className="space-y-3">
               {sorted.map((r, i) => (

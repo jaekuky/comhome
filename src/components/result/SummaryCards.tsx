@@ -23,7 +23,7 @@ const SummaryCards = ({ neighborhoodCount, avgCommute, avgSavings }: SummaryCard
       {cards.map((card, i) => (
         <div
           key={i}
-          className="min-w-[130px] flex-1 rounded-2xl bg-card border border-border p-4 shadow-card text-center animate-fade-in"
+          className="min-w-[130px] flex-1 rounded-2xl bg-card border border-border p-4 shadow-card text-center animate-fade-in animate-counter-blur"
           style={{ animationDelay: `${i * 0.1}s` }}
         >
           <card.icon className={`h-5 w-5 mx-auto mb-2 ${card.color}`} />

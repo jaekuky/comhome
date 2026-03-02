@@ -123,12 +123,12 @@
   }
 
   @keyframes breathing {
-    0%, 100% { box-shadow: 0 0 0 0 hsl(217, 82%, 51%, 0); }
-    50% { box-shadow: 0 0 0 4px hsl(217, 82%, 51%, 0.08); }
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.005); }
   }
 
   .animate-breathing {
-    animation: breathing 3s ease-in-out infinite;
+    animation: breathing 2s ease-in-out infinite;
   }
 
   @keyframes slide-up {
@@ -138,5 +138,56 @@
 
   .animate-slide-up {
     animation: slide-up 0.4s ease-out forwards;
+  }
+
+  @keyframes pop-in {
+    0% { transform: scale(0); opacity: 0; }
+    70% { transform: scale(1.15); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .animate-pop-in {
+    animation: pop-in 0.3s ease-out forwards;
+  }
+
+  @keyframes peek-a-boo {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-peek-a-boo {
+    animation: peek-a-boo 0.5s ease-out forwards;
+  }
+
+  @keyframes counter-blur {
+    0% { filter: blur(4px); opacity: 0.6; }
+    100% { filter: blur(0); opacity: 1; }
+  }
+
+  .animate-counter-blur {
+    animation: counter-blur 0.8s ease-out forwards;
+  }
+}
+
+/* Safe area */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* Touch targets */
+@layer base {
+  button, a, [role="button"], [role="option"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Exceptions for inline/icon elements */
+  .inline-touch-target {
+    min-height: auto;
+    min-width: auto;
   }
 }

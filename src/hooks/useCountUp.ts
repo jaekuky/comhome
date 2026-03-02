@@ -11,7 +11,7 @@ export function useCountUp(target: number, duration: number = 1200, startFrom?: 
     const step = (timestamp: number) => {
       if (!startTimeRef.current) startTimeRef.current = timestamp;
       const progress = Math.min((timestamp - startTimeRef.current) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+      const eased = 1 - Math.pow(2, -10 * progress); // easeOutExpo
       setValue(Math.round(from + (target - from) * eased));
       if (progress < 1) {
         rafRef.current = requestAnimationFrame(step);

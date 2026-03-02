@@ -1,0 +1,16 @@
+{
+  "name": "ComHome - 직주근접 주거지 추천",
+  "short_name": "ComHome",
+  "description": "출퇴근 30분, 월세는 더 저렴하게. AI 기반 직주근접 주거지 추천 서비스",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}

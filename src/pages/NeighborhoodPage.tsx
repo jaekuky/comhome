@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useSearchStore } from "@/stores/searchStore";
 import { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
+import { trackEvent } from "@/lib/analytics";
 import CommuteTimeline from "@/components/neighborhood/CommuteTimeline";
 import CostComparisonTable from "@/components/neighborhood/CostComparisonTable";
 import LivingInfoTabs from "@/components/neighborhood/LivingInfoTabs";
@@ -22,6 +23,27 @@ interface HousingListing {
   description: string | null;
 }
 
+const ScarcityCounter = () => {
+  const [count, setCount] = useState(() => 40 + Math.floor(Math.random() * 20));
+
+  useEffect(() => {
+    const tick = () => {
+      setCount((c) => c + 1);
+      const next = (30 + Math.random() * 30) * 1000;
+      timer = setTimeout(tick, next);
+    };
+    let timer = setTimeout(tick, (30 + Math.random() * 30) * 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <Eye className="h-3.5 w-3.5 inline-touch-target" />
+      <span>이 동네를 본 사람: 오늘 <strong className="text-foreground">{count}명</strong></span>
+    </div>
+  );
+};
+
 const NeighborhoodPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -34,6 +56,8 @@ const NeighborhoodPage = () => {
 
   useEffect(() => {
     if (!id) return;
+
+    trackEvent("neighborhood_detail_viewed", { neighborhood_id: id, company_id: selectedCompany?.id });
 
     const fetchData = async () => {
       setLoading(true);
@@ -50,7 +74,10 @@ const NeighborhoodPage = () => {
           : Promise.resolve({ data: null, error: null }),
       ]);
 
-      if (nbRes.data) setNeighborhood(nbRes.data);
+      if (nbRes.data) {
+        setNeighborhood(nbRes.data);
+        document.title = `${nbRes.data.name} - 동네 상세 | ComHome`;
+      }
       if (listRes.data) setListings(listRes.data as HousingListing[]);
       if (recRes.data) setRecommendation(recRes.data);
       setLoading(false);
@@ -88,12 +115,13 @@ const NeighborhoodPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-24 safe-area-bottom">
       <div className="mobile-container py-6 space-y-6">
         {/* Back */}
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
+          aria-label="결과 목록으로 돌아가기"
         >
           <ArrowLeft className="h-4 w-4" />
           결과 목록으로
@@ -110,6 +138,10 @@ const NeighborhoodPage = () => {
                 통근 {recommendation.commute_minutes}분
               </Badge>
             )}
+          </div>
+          {/* Scarcity counter */}
+          <div className="mt-3">
+            <ScarcityCounter />
           </div>
         </div>
 

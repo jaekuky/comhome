@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Clock, Wallet, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { trackEvent } from "@/lib/analytics";
 
 export interface NeighborhoodResult {
   id: string;
@@ -39,11 +40,15 @@ const NeighborhoodCard = ({ data, index }: NeighborhoodCardProps) => {
   return (
     <button
       ref={ref}
-      onClick={() => navigate(`/neighborhood/${data.id}`)}
+      onClick={() => {
+        trackEvent("neighborhood_clicked", { neighborhood_id: data.id, rank: data.rank });
+        navigate(`/neighborhood/${data.id}`);
+      }}
+      aria-label={`${data.name} ${data.district} 통근 ${data.commute_minutes}분`}
       className={`w-full rounded-2xl bg-card border border-border p-5 shadow-card hover:shadow-card-hover transition-all text-left ${
-        visible ? "animate-fade-in opacity-100" : "opacity-0"
+        visible ? "animate-peek-a-boo opacity-100" : "opacity-0"
       }`}
-      style={{ animationDelay: `${index * 0.08}s` }}
+      style={{ animationDelay: `${index * 0.1}s` }}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">

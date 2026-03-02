@@ -44,6 +44,87 @@ export type Database = {
         }
         Relationships: []
       }
+      neighborhoods: {
+        Row: {
+          avg_rent: number
+          city: string
+          description: string | null
+          district: string
+          id: string
+          latitude: number | null
+          longitude: number | null
+          name: string
+          transit_lines: Json | null
+        }
+        Insert: {
+          avg_rent?: number
+          city?: string
+          description?: string | null
+          district: string
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          name: string
+          transit_lines?: Json | null
+        }
+        Update: {
+          avg_rent?: number
+          city?: string
+          description?: string | null
+          district?: string
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          name?: string
+          transit_lines?: Json | null
+        }
+        Relationships: []
+      }
+      recommended_neighborhoods: {
+        Row: {
+          commute_minutes: number
+          commute_route: string | null
+          company_id: string
+          id: string
+          neighborhood_id: string
+          rank: number
+          savings_amount: number
+        }
+        Insert: {
+          commute_minutes: number
+          commute_route?: string | null
+          company_id: string
+          id?: string
+          neighborhood_id: string
+          rank?: number
+          savings_amount?: number
+        }
+        Update: {
+          commute_minutes?: number
+          commute_route?: string | null
+          company_id?: string
+          id?: string
+          neighborhood_id?: string
+          rank?: number
+          savings_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recommended_neighborhoods_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recommended_neighborhoods_neighborhood_id_fkey"
+            columns: ["neighborhood_id"]
+            isOneToOne: false
+            referencedRelation: "neighborhoods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

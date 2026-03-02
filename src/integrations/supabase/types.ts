@@ -44,6 +44,53 @@ export type Database = {
         }
         Relationships: []
       }
+      housing_listings: {
+        Row: {
+          area_sqm: number
+          created_at: string
+          deposit: number
+          description: string | null
+          distance_to_station: number
+          floor: number
+          id: string
+          monthly_rent: number
+          neighborhood_id: string
+          type: string
+        }
+        Insert: {
+          area_sqm?: number
+          created_at?: string
+          deposit?: number
+          description?: string | null
+          distance_to_station?: number
+          floor?: number
+          id?: string
+          monthly_rent?: number
+          neighborhood_id: string
+          type?: string
+        }
+        Update: {
+          area_sqm?: number
+          created_at?: string
+          deposit?: number
+          description?: string | null
+          distance_to_station?: number
+          floor?: number
+          id?: string
+          monthly_rent?: number
+          neighborhood_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "housing_listings_neighborhood_id_fkey"
+            columns: ["neighborhood_id"]
+            isOneToOne: false
+            referencedRelation: "neighborhoods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       neighborhoods: {
         Row: {
           avg_rent: number

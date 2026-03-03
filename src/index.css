@@ -167,6 +167,57 @@
   .animate-counter-blur {
     animation: counter-blur 0.8s ease-out forwards;
   }
+
+  /* NarrativeLoading animations */
+  @keyframes map-zoom {
+    from { opacity: 0; transform: scale(0.7); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .animate-map-zoom {
+    animation: map-zoom 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  @keyframes ripple-expand {
+    0% { transform: scale(0); opacity: 0.65; }
+    100% { transform: scale(1); opacity: 0; }
+  }
+
+  @keyframes pin-drop {
+    0%   { opacity: 0; transform: translateY(-44px); }
+    55%  { opacity: 1; transform: translateY(4px); }
+    75%  { transform: translateY(-6px); }
+    90%  { transform: translateY(2px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-pin-drop {
+    animation: pin-drop 0.45s ease-out both;
+  }
+
+  @keyframes confetti-float {
+    0%   { opacity: 0; transform: scale(0.5) translateY(0); }
+    25%  { opacity: 1; transform: scale(1.1) translateY(-8px); }
+    100% { opacity: 0; transform: scale(0.8) translateY(-44px) rotate(25deg); }
+  }
+
+  .animate-confetti {
+    animation: confetti-float 0.65s ease-out both;
+  }
+
+  /* NarrativeLoading scene utilities */
+  .ripple-sm { width: 80px;  height: 80px;  animation: ripple-expand 1.4s ease-out 0s    infinite; opacity: 0; }
+  .ripple-md { width: 122px; height: 122px; animation: ripple-expand 1.4s ease-out 0.38s infinite; opacity: 0; }
+  .ripple-lg { width: 164px; height: 164px; animation: ripple-expand 1.4s ease-out 0.76s infinite; opacity: 0; }
+
+  .pin-delay-0 { animation-delay: 0s; }
+  .pin-delay-1 { animation-delay: 0.17s; }
+  .pin-delay-2 { animation-delay: 0.33s; }
+
+  .confetti-delay-0 { animation-delay: 0.35s; }
+  .confetti-delay-1 { animation-delay: 0.43s; }
+  .confetti-delay-2 { animation-delay: 0.51s; }
+  .confetti-delay-3 { animation-delay: 0.59s; }
 }
 
 /* Safe area */

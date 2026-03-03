@@ -168,6 +168,16 @@
     animation: counter-blur 0.8s ease-out forwards;
   }
 
+  @keyframes counter-bounce {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+
+  .animate-counter-bounce {
+    animation: counter-bounce 0.4s ease-out forwards;
+  }
+
   /* NarrativeLoading animations */
   @keyframes map-zoom {
     from { opacity: 0; transform: scale(0.7); }

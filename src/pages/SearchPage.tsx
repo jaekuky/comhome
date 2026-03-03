@@ -53,8 +53,9 @@ const SearchPage = () => {
 
       if (dbError) throw dbError;
       setResults((data as Company[]) || []);
-    } catch (err: any) {
-      if (err?.message?.includes("fetch") || err?.message?.includes("network")) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
+      if (message.includes("fetch") || message.includes("network")) {
         setError("network");
       } else {
         setError("unknown");

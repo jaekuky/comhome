@@ -24,7 +24,7 @@ function dismiss(id: string) {
     const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
     data[id] = true;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch {}
+  } catch (_e) { /* localStorage unavailable */ }
 }
 
 const OnboardingTooltip = ({ id, text, position = "top", onDismiss }: OnboardingTooltipProps) => {

@@ -1,4 +1,4 @@
-import { Train, ShoppingBag, Shield, MapPin, Coffee, Hospital, Package, Lightbulb, Camera } from "lucide-react";
+import { type LucideIcon, Train, ShoppingBag, Shield, MapPin, Coffee, Hospital, Package, Lightbulb, Camera } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -7,7 +7,7 @@ interface LivingInfoTabsProps {
   district: string;
 }
 
-const InfoItem = ({ icon: Icon, label, value, grade }: { icon: any; label: string; value: string; grade?: string }) => {
+const InfoItem = ({ icon: Icon, label, value, grade }: { icon: LucideIcon; label: string; value: string; grade?: string }) => {
   const gradeColor = grade === "A" || grade === "B" ? "hsl(var(--success))" : grade === "C" ? "hsl(var(--warning))" : "hsl(var(--destructive))";
   return (
     <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
@@ -53,7 +53,7 @@ const getMockData = (name: string) => {
   };
 };
 
-const LivingInfoTabs = ({ neighborhoodName, district }: LivingInfoTabsProps) => {
+const LivingInfoTabs = ({ neighborhoodName }: LivingInfoTabsProps) => {
   const data = getMockData(neighborhoodName);
 
   return (

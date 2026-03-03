@@ -13,6 +13,20 @@ import SummaryCards from "@/components/result/SummaryCards";
 import FilterTabs, { type SortMode } from "@/components/result/FilterTabs";
 import NeighborhoodCard, { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
 
+interface RawRecommendedRow {
+  rank: number;
+  commute_minutes: number;
+  commute_route: string | null;
+  savings_amount: number;
+  neighborhoods: {
+    id: string;
+    name: string;
+    district: string;
+    city: string;
+    avg_rent: number;
+  };
+}
+
 const ResultPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -53,7 +67,7 @@ const ResultPage = () => {
       return;
     }
 
-    const mapped: NeighborhoodResult[] = data.map((r: any) => ({
+    const mapped: NeighborhoodResult[] = (data as RawRecommendedRow[]).map((r) => ({
       id: r.neighborhoods.id,
       name: r.neighborhoods.name,
       district: r.neighborhoods.district,

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import { type Tables } from "@/integrations/supabase/types";
 import { useSearchStore } from "@/stores/searchStore";
 import { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
 import { trackEvent } from "@/lib/analytics";
@@ -49,8 +50,8 @@ const NeighborhoodPage = () => {
   const navigate = useNavigate();
   const { selectedCompany } = useSearchStore();
 
-  const [neighborhood, setNeighborhood] = useState<any>(null);
-  const [recommendation, setRecommendation] = useState<any>(null);
+  const [neighborhood, setNeighborhood] = useState<Tables<"neighborhoods"> | null>(null);
+  const [recommendation, setRecommendation] = useState<Tables<"recommended_neighborhoods"> | null>(null);
   const [listings, setListings] = useState<HousingListing[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -119,6 +120,7 @@ const NeighborhoodPage = () => {
       <div className="mobile-container py-6 space-y-6">
         {/* Back */}
         <button
+          type="button"
           onClick={() => navigate(-1)}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
           aria-label="결과 목록으로 돌아가기"

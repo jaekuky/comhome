@@ -40,7 +40,8 @@ export function trackEvent(eventName: EventName, params: EventParams = {}) {
   }
 
   // GA4 ready
-  if (typeof window !== "undefined" && (window as any).gtag) {
-    (window as any).gtag("event", eventName, payload);
+  type GtagWindow = Window & { gtag?: (command: string, event: string, params: Record<string, unknown>) => void };
+  if (typeof window !== "undefined" && (window as GtagWindow).gtag) {
+    (window as GtagWindow).gtag!("event", eventName, payload);
   }
 }

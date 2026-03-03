@@ -34,7 +34,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     set({ recentSearches: updated });
     try {
       localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
-    } catch {}
+    } catch (_e) { /* localStorage unavailable */ }
   },
   loadRecentSearches: () => {
     try {
@@ -42,7 +42,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       if (stored) {
         set({ recentSearches: JSON.parse(stored) });
       }
-    } catch {}
+    } catch (_e) { /* localStorage unavailable */ }
   },
   compareList: [],
   addToCompare: (item) => {

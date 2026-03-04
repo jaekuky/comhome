@@ -1,4 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+
+const SOCIAL_PROOF_INITIAL = 1247;
+const MICROCOPY = [
+  "강남역 직장인 73%가 몰랐던 숨은 동네",
+  "판교 출퇴근 평균 47분 → 22분으로",
+  "월 12만원 추가로 매일 1시간 되찾기",
+] as const;
 import { useNavigate } from "react-router-dom";
 import { Search, Building2, Check, ArrowLeft, MapPin, Clock, AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,8 +25,14 @@ const SearchPage = () => {
   const [confirmedId, setConfirmedId] = useState<string | null>(null);
   const [hasTyped, setHasTyped] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [socialCount, setSocialCount] = useState(SOCIAL_PROOF_INITIAL);
+  const [isPulsing, setIsPulsing] = useState(false);
+  const [microcopyIndex, setMicrocopyIndex] = useState(0);
+  const [microcopyVisible, setMicrocopyVisible] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const socialTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const pulseTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const {
     selectedCompany,
@@ -34,6 +47,33 @@ const SearchPage = () => {
     inputRef.current?.focus();
     document.title = "회사 검색 | ComHome";
   }, [loadRecentSearches]);
+
+  // Social proof counter: +1 every 30~120 seconds
+  useEffect(() => {
+    const tick = () => {
+      setSocialCount((prev) => prev + 1);
+      setIsPulsing(true);
+      pulseTimerRef.current = setTimeout(() => setIsPulsing(false), 600);
+      socialTimerRef.current = setTimeout(tick, (30 + Math.random() * 90) * 1000);
+    };
+    socialTimerRef.current = setTimeout(tick, (30 + Math.random() * 90) * 1000);
+    return () => {
+      clearTimeout(socialTimerRef.current);
+      clearTimeout(pulseTimerRef.current);
+    };
+  }, []);
+
+  // Microcopy rotator: cycle every 5 seconds with fade
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMicrocopyVisible(false);
+      setTimeout(() => {
+        setMicrocopyIndex((prev) => (prev + 1) % MICROCOPY.length);
+        setMicrocopyVisible(true);
+      }, 350);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const searchCompanies = useCallback(async (searchQuery: string) => {
     if (searchQuery.length < 2) {
@@ -147,6 +187,17 @@ const SearchPage = () => {
           뒤로가기
         </button>
 
+        {/* Social proof counter */}
+        <p className="text-center text-xs text-muted-foreground animate-fade-up">
+          지금{" "}
+          <span
+            className={`inline-block font-semibold text-foreground tabular-nums${isPulsing ? " animate-number-pulse" : ""}`}
+          >
+            {socialCount.toLocaleString()}
+          </span>
+          명이 출퇴근 30분 동네를 찾았습니다
+        </p>
+
         {/* Header */}
         <div className="space-y-2">
           <h1 className="text-2xl font-bold text-foreground">
@@ -157,8 +208,9 @@ const SearchPage = () => {
           </p>
         </div>
 
-        {/* Search input */}
-        <div className="relative">
+        {/* Search input + microcopy */}
+        <div className="space-y-3">
+          <div className="relative">
           {/* Onboarding tooltip */}
           {!hasTyped && !selectedCompany && (
             <OnboardingTooltip
@@ -311,6 +363,14 @@ const SearchPage = () => {
               ))}
             </div>
           )}
+          </div>
+
+          {/* Microcopy */}
+          <p
+            className={`text-xs text-muted-foreground text-center transition-opacity duration-300 ${microcopyVisible ? "opacity-100" : "opacity-0"}`}
+          >
+            {MICROCOPY[microcopyIndex]}
+          </p>
         </div>
 
         {/* Selected company confirmation */}

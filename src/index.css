@@ -228,6 +228,24 @@
   .confetti-delay-1 { animation-delay: 0.43s; }
   .confetti-delay-2 { animation-delay: 0.51s; }
   .confetti-delay-3 { animation-delay: 0.59s; }
+
+  @keyframes number-pulse {
+    0%, 100% { transform: scale(1); }
+    40%       { transform: scale(1.22); color: hsl(var(--primary)); }
+  }
+
+  .animate-number-pulse {
+    animation: number-pulse 0.55s ease-out forwards;
+  }
+
+  @keyframes fade-up-sm {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-fade-up {
+    animation: fade-up-sm 0.5s ease-out forwards;
+  }
 }
 
 /* Safe area */

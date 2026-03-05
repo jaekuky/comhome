@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useSearchStore, type Company } from "@/stores/searchStore";
 import { toast } from "@/hooks/use-toast";
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, getAnalysisCount, incrementAnalysisCount } from "@/lib/analytics";
 import OnboardingTooltip from "@/components/OnboardingTooltip";
 import QuickAccessButtons from "@/components/search/QuickAccessButtons";
 
@@ -40,6 +40,9 @@ const SearchPage = () => {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const socialTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const mountTimeRef = useRef<number>(Date.now());
+  const hasFocusedRef = useRef(false);
+  const attemptCountRef = useRef(0);
 
   const {
     selectedCompany,
@@ -168,12 +171,18 @@ const SearchPage = () => {
     }
   };
 
-  const handleSelectCompany = (company: Company) => {
+  const handleSelectCompany = (company: Company, inputMethod: "autocomplete" | "quick_access" = "autocomplete") => {
+    attemptCountRef.current += 1;
     setSelectedCompany(company);
     setQuery(company.name);
     setResults([]);
     setConfirmedId(company.id);
-    trackEvent("company_selected", { company_id: company.id, company_name: company.name });
+    trackEvent("company_selected", {
+      company_id: company.id,
+      company_name: company.name,
+      input_method: inputMethod,
+      attempt_count: attemptCountRef.current,
+    });
 
     if (!company.district.match(/(구|시|군)$/)) {
       toast({
@@ -189,7 +198,20 @@ const SearchPage = () => {
 
   const handleAnalyze = () => {
     if (!selectedCompany) return;
-    trackEvent("analysis_triggered", { company_id: selectedCompany.id });
+    const analysisCount = getAnalysisCount();
+    const isRepeat = analysisCount > 0;
+    trackEvent("analysis_started", {
+      company_id: selectedCompany.id,
+      company_name: selectedCompany.name,
+      is_repeat_analysis: isRepeat,
+    });
+    if (isRepeat) {
+      trackEvent("second_analysis", {
+        new_company_name: selectedCompany.name,
+        source: "manual",
+      });
+    }
+    incrementAnalysisCount();
     navigate("/result", { state: { company: selectedCompany } });
   };
 
@@ -197,6 +219,7 @@ const SearchPage = () => {
     setQuery(areaName);
     setHasTyped(true);
     trackEvent("quick_access_clicked", { area: areaName });
+    attemptCountRef.current += 1;
 
     setLoading(true);
     setError(null);
@@ -214,7 +237,26 @@ const SearchPage = () => {
         setSelectedCompany(company);
         setConfirmedId(company.id);
         addRecentSearch(company);
-        trackEvent("analysis_triggered", { company_id: company.id, via: "quick_access" });
+        trackEvent("company_selected", {
+          company_id: company.id,
+          company_name: company.name,
+          input_method: "quick_access",
+          attempt_count: attemptCountRef.current,
+        });
+        const analysisCount = getAnalysisCount();
+        const isRepeat = analysisCount > 0;
+        trackEvent("analysis_started", {
+          company_id: company.id,
+          company_name: company.name,
+          is_repeat_analysis: isRepeat,
+        });
+        if (isRepeat) {
+          trackEvent("second_analysis", {
+            new_company_name: company.name,
+            source: "quick_access",
+          });
+        }
+        incrementAnalysisCount();
         navigate("/result", { state: { company } });
       } else {
         // No match — show dropdown so user can search manually
@@ -307,7 +349,15 @@ const SearchPage = () => {
               placeholder={isFocused || query.length > 0 ? "예: 삼성전자, 강남역 근처..." : typedText}
               value={query}
               onChange={handleInputChange}
-              onFocus={() => setIsFocused(true)}
+              onFocus={() => {
+                setIsFocused(true);
+                if (!hasFocusedRef.current) {
+                  hasFocusedRef.current = true;
+                  trackEvent("input_focus", {
+                    time_to_focus_ms: Date.now() - mountTimeRef.current,
+                  });
+                }
+              }}
               onBlur={() => setTimeout(() => setIsFocused(false), 200)}
               onKeyDown={handleKeyDown}
               className={`w-full h-14 rounded-[24px] border bg-card pl-12 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none transition-all duration-300 ${

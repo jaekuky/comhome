@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, Share2, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ const ResultPage = () => {
   const [results, setResults] = useState<NeighborhoodResult[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("rank");
   const [nudgeActive, setNudgeActive] = useState(false);
+  const pageLoadTimeRef = useRef<number>(Date.now());
 
   useEffect(() => {
     if (company) {
@@ -99,7 +100,13 @@ const ResultPage = () => {
     const next = results.length > 0 ? "results" : "empty";
     setPhase(next);
     if (next === "results") {
+      const loadTimeMs = Date.now() - pageLoadTimeRef.current;
       trackEvent("analysis_completed", { company_id: company?.id, count: results.length });
+      trackEvent("result_loaded", {
+        company_id: company?.id,
+        load_time_ms: loadTimeMs,
+        result_count: results.length,
+      });
     }
   }, [results, company]);
 

@@ -42,6 +42,9 @@ const NeighborhoodCard = ({ data, index }: NeighborhoodCardProps) => {
       ref={ref}
       onClick={() => {
         trackEvent("neighborhood_clicked", { neighborhood_id: data.id, rank: data.rank });
+        if (index >= 1) {
+          trackEvent("card_explored", { card_index: index, area_name: data.name });
+        }
         navigate(`/neighborhood/${data.id}`);
       }}
       aria-label={`${data.name} ${data.district} 통근 ${data.commute_minutes}분`}

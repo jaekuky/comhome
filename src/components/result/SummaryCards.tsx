@@ -1,5 +1,7 @@
+import { useEffect, useRef } from "react";
 import { MapPin, Clock, Wallet } from "lucide-react";
 import { useCountUp } from "@/hooks/useCountUp";
+import { trackEvent } from "@/lib/analytics";
 
 interface SummaryCardsProps {
   neighborhoodCount: number;
@@ -11,6 +13,23 @@ const SummaryCards = ({ neighborhoodCount, avgCommute, avgSavings }: SummaryCard
   const countVal = useCountUp(neighborhoodCount, 1000);
   const commuteVal = useCountUp(avgCommute, 1000, 60);
   const savingsVal = useCountUp(avgSavings, 1200);
+  const ahaSentRef = useRef(false);
+
+  useEffect(() => {
+    if (ahaSentRef.current) return;
+    // Wait for last counter to finish (1200ms) + 3s dwell = 4200ms
+    const timer = setTimeout(() => {
+      ahaSentRef.current = true;
+      const BASE_COMMUTE_MIN = 50;
+      const timeSavedMinPerMonth = Math.max(0, (BASE_COMMUTE_MIN - avgCommute) * 2 * 20);
+      const timeSavedHours = Math.round((timeSavedMinPerMonth / 60) * 10) / 10;
+      trackEvent("aha_moment", {
+        time_saved_hours: timeSavedHours,
+        cost_diff_won: avgSavings * 10000,
+      });
+    }, 4200);
+    return () => clearTimeout(timer);
+  }, [avgCommute, avgSavings]);
 
   const cards = [
     { icon: MapPin, value: `${countVal}개`, label: "추천 동네", color: "text-primary" },

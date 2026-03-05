@@ -1,4 +1,5 @@
 const SESSION_KEY = "comhome_session_id";
+const ANALYSIS_COUNT_KEY = "comhome_analysis_count";
 
 function getSessionId(): string {
   let id = sessionStorage.getItem(SESSION_KEY);
@@ -9,12 +10,45 @@ function getSessionId(): string {
   return id;
 }
 
+export function getDeviceType(): "mobile" | "tablet" | "desktop" {
+  const ua = navigator.userAgent;
+  if (/Mobi|Android|iPhone|iPod/.test(ua)) return "mobile";
+  if (/iPad|Tablet/.test(ua)) return "tablet";
+  return "desktop";
+}
+
+export function getUTMParams(): Record<string, string> {
+  const params = new URLSearchParams(window.location.search);
+  const utmKeys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
+  const result: Record<string, string> = {};
+  for (const key of utmKeys) {
+    const val = params.get(key);
+    if (val) result[key] = val;
+  }
+  return result;
+}
+
+export function getAnalysisCount(): number {
+  return parseInt(sessionStorage.getItem(ANALYSIS_COUNT_KEY) ?? "0", 10);
+}
+
+export function incrementAnalysisCount(): void {
+  sessionStorage.setItem(ANALYSIS_COUNT_KEY, String(getAnalysisCount() + 1));
+}
+
 type EventName =
   | "page_view"
+  | "page_view_landing"
   | "search_start"
+  | "input_focus"
   | "company_selected"
   | "analysis_triggered"
+  | "analysis_started"
   | "analysis_completed"
+  | "result_loaded"
+  | "aha_moment"
+  | "card_explored"
+  | "second_analysis"
   | "neighborhood_clicked"
   | "neighborhood_detail_viewed"
   | "compare_added"

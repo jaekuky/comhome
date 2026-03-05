@@ -123,12 +123,18 @@
   }
 
   @keyframes breathing {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.005); }
+    0%, 100% { border-color: hsl(217 82% 51% / 0.3); }
+    50%       { border-color: hsl(217 82% 51% / 0.8); }
   }
 
   .animate-breathing {
-    animation: breathing 2s ease-in-out infinite;
+    animation: breathing 1.5s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-breathing {
+      animation: none;
+    }
   }
 
   @keyframes slide-up {

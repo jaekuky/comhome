@@ -16,6 +16,11 @@ import { trackEvent } from "@/lib/analytics";
 import OnboardingTooltip from "@/components/OnboardingTooltip";
 import QuickAccessButtons from "@/components/search/QuickAccessButtons";
 
+const TYPING_TEXT = "회사 이름을 입력하세요";
+const TYPING_SPEED_MS = 100;
+const TYPING_PAUSE_MS = 2000;
+const TYPING_RESTART_DELAY_MS = 400;
+
 const SearchPage = () => {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -30,6 +35,7 @@ const SearchPage = () => {
   const [isPulsing, setIsPulsing] = useState(false);
   const [microcopyIndex, setMicrocopyIndex] = useState(0);
   const [microcopyVisible, setMicrocopyVisible] = useState(true);
+  const [typedText, setTypedText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const socialTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -75,6 +81,35 @@ const SearchPage = () => {
     }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Typewriter placeholder effect — inactive when focused, has value, or prefers-reduced-motion
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion || isFocused || query.length > 0) {
+      setTypedText("");
+      return;
+    }
+
+    let charIndex = 0;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const tick = () => {
+      charIndex++;
+      setTypedText(TYPING_TEXT.slice(0, charIndex));
+      if (charIndex < TYPING_TEXT.length) {
+        timeoutId = setTimeout(tick, TYPING_SPEED_MS);
+      } else {
+        timeoutId = setTimeout(() => {
+          setTypedText("");
+          charIndex = 0;
+          timeoutId = setTimeout(tick, TYPING_RESTART_DELAY_MS);
+        }, TYPING_PAUSE_MS);
+      }
+    };
+
+    timeoutId = setTimeout(tick, TYPING_SPEED_MS);
+    return () => clearTimeout(timeoutId);
+  }, [isFocused, query.length]);
 
   const searchCompanies = useCallback(async (searchQuery: string) => {
     if (searchQuery.length < 2) {
@@ -269,7 +304,7 @@ const SearchPage = () => {
               aria-controls="company-listbox"
               aria-activedescendant={activeIndex >= 0 ? `company-option-${activeIndex}` : undefined}
               aria-label="회사 검색"
-              placeholder="예: 삼성전자, 강남역 근처..."
+              placeholder={isFocused || query.length > 0 ? "예: 삼성전자, 강남역 근처..." : typedText}
               value={query}
               onChange={handleInputChange}
               onFocus={() => setIsFocused(true)}

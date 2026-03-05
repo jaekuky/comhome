@@ -14,6 +14,7 @@ import { useSearchStore, type Company } from "@/stores/searchStore";
 import { toast } from "@/hooks/use-toast";
 import { trackEvent } from "@/lib/analytics";
 import OnboardingTooltip from "@/components/OnboardingTooltip";
+import QuickAccessButtons from "@/components/search/QuickAccessButtons";
 
 const SearchPage = () => {
   const navigate = useNavigate();
@@ -155,6 +156,42 @@ const SearchPage = () => {
     if (!selectedCompany) return;
     trackEvent("analysis_triggered", { company_id: selectedCompany.id });
     navigate("/result", { state: { company: selectedCompany } });
+  };
+
+  const handleQuickAccess = async (areaName: string) => {
+    setQuery(areaName);
+    setHasTyped(true);
+    trackEvent("quick_access_clicked", { area: areaName });
+
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: dbError } = await supabase
+        .from("companies")
+        .select("*")
+        .or(`name.ilike.%${areaName}%,address.ilike.%${areaName}%`)
+        .limit(1);
+
+      if (dbError) throw dbError;
+
+      if (data && data.length > 0) {
+        const company = data[0] as Company;
+        setSelectedCompany(company);
+        setConfirmedId(company.id);
+        addRecentSearch(company);
+        trackEvent("analysis_triggered", { company_id: company.id, via: "quick_access" });
+        navigate("/result", { state: { company } });
+      } else {
+        // No match — show dropdown so user can search manually
+        setResults([]);
+        setIsFocused(true);
+        inputRef.current?.focus();
+      }
+    } catch {
+      setError("unknown");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -371,6 +408,9 @@ const SearchPage = () => {
           >
             {MICROCOPY[microcopyIndex]}
           </p>
+
+          {/* Quick access */}
+          <QuickAccessButtons onSelect={handleQuickAccess} disabled={loading} />
         </div>
 
         {/* Selected company confirmation */}

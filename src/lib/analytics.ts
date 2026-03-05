@@ -19,7 +19,8 @@ type EventName =
   | "neighborhood_detail_viewed"
   | "compare_added"
   | "housing_viewed"
-  | "share_clicked";
+  | "share_clicked"
+  | "quick_access_clicked";
 
 interface EventParams {
   company_id?: string;

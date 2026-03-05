@@ -35,6 +35,7 @@ const ResultPage = () => {
   const [phase, setPhase] = useState<"loading" | "results" | "empty">("loading");
   const [results, setResults] = useState<NeighborhoodResult[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("rank");
+  const [nudgeActive, setNudgeActive] = useState(false);
 
   useEffect(() => {
     if (company) {
@@ -87,6 +88,12 @@ const ResultPage = () => {
       fetchResults(company.id);
     }
   }, [company, fetchResults]);
+
+  useEffect(() => {
+    if (phase !== "results") return;
+    const t = setTimeout(() => setNudgeActive(true), 5000);
+    return () => clearTimeout(t);
+  }, [phase]);
 
   const handleLoadingComplete = useCallback(() => {
     const next = results.length > 0 ? "results" : "empty";
@@ -185,7 +192,16 @@ const ResultPage = () => {
 
             <div className="space-y-3">
               {sorted.map((r, i) => (
-                <NeighborhoodCard key={r.id} data={r} index={i} />
+                <div
+                  key={r.id}
+                  className={[
+                    i === 1 ? "card-peek-1" : i === 2 ? "card-peek-2" : "",
+                    i === 1 && nudgeActive ? "animate-card-nudge" : "",
+                  ].join(" ").trim()}
+                  onAnimationEnd={i === 1 ? () => setNudgeActive(false) : undefined}
+                >
+                  <NeighborhoodCard data={r} index={i} />
+                </div>
               ))}
             </div>
           </div>

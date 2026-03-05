@@ -252,6 +252,24 @@
   .animate-fade-up {
     animation: fade-up-sm 0.5s ease-out forwards;
   }
+
+  .card-peek-1 { margin-left: 3px; }
+  .card-peek-2 { margin-left: 1.5px; }
+
+  @keyframes card-nudge {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-3px); }
+  }
+
+  .animate-card-nudge {
+    animation: card-nudge 0.6s ease-in-out forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-card-nudge {
+      animation: none;
+    }
+  }
 }
 
 /* Safe area */

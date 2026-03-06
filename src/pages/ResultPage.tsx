@@ -136,6 +136,11 @@ const ResultPage = () => {
     () => results.length ? Math.round(results.reduce((s, r) => s + r.savings_amount, 0) / results.length) : 0,
     [results]
   );
+  // 현재 통근 시간 추정: 추천 동네 최대 통근의 1.8배 (최소 45분)
+  const estimatedCurrentCommute = useMemo(
+    () => results.length ? Math.max(45, Math.round(Math.max(...results.map((r) => r.commute_minutes)) * 1.8)) : 50,
+    [results]
+  );
 
   if (!company) {
     return (
@@ -184,7 +189,7 @@ const ResultPage = () => {
               <p className="text-sm text-muted-foreground mt-1">통근 30분 이내 최적의 동네 {results.length}곳</p>
             </div>
 
-            <InsightBanner currentCommute={50} avgRecommendedCommute={avgCommute} />
+            <InsightBanner currentCommute={estimatedCurrentCommute} avgRecommendedCommute={avgCommute} />
             <SummaryCards neighborhoodCount={results.length} avgCommute={avgCommute} avgSavings={avgSavings} />
 
             {/* Filter with onboarding */}

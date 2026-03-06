@@ -167,7 +167,6 @@ const NeighborhoodPage = () => {
         {/* Living Info */}
         <LivingInfoTabs
           neighborhoodName={neighborhood.name}
-          district={neighborhood.district}
         />
 
         {/* Housing Preview */}

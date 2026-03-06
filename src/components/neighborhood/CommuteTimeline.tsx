@@ -1,6 +1,5 @@
-import { Clock, Train, AlertCircle } from "lucide-react";
+import { Clock, Train } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 
 interface CommuteTimelineProps {
   companyName: string;

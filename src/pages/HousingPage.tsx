@@ -33,7 +33,7 @@ const HousingPage = () => {
 
   useEffect(() => {
     if (!neighborhoodId) return;
-    const fetch = async () => {
+    const loadData = async () => {
       setLoading(true);
       const [listRes, nbRes] = await Promise.all([
         supabase.from("housing_listings").select("*").eq("neighborhood_id", neighborhoodId),
@@ -43,7 +43,7 @@ const HousingPage = () => {
       if (nbRes.data) setNeighborhoodName(nbRes.data.name);
       setLoading(false);
     };
-    fetch();
+    loadData();
   }, [neighborhoodId]);
 
   const filtered = useMemo(() => {

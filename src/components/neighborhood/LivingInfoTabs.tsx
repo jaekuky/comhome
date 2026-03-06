@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card";
 
 interface LivingInfoTabsProps {
   neighborhoodName: string;
-  district: string;
 }
 
 const InfoItem = ({ icon: Icon, label, value, grade }: { icon: LucideIcon; label: string; value: string; grade?: string }) => {

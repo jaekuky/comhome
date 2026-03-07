@@ -17,7 +17,7 @@ interface Listing {
   description: string | null;
 }
 
-const typeFilters = ["전체", "원룸", "투룸", "쓰리룸+"] as const;
+const typeFilters = ["전체", "원룸", "투룸"] as const;
 
 const HousingPage = () => {
   const { neighborhoodId } = useParams();

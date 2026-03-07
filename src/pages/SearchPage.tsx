@@ -1,16 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-
-const SOCIAL_PROOF_INITIAL = 1247;
-const MICROCOPY = [
-  "강남역 직장인 73%가 몰랐던 숨은 동네",
-  "판교 출퇴근 평균 47분 → 22분으로",
-  "월 12만원 추가로 매일 1시간 되찾기",
-] as const;
 import { useNavigate } from "react-router-dom";
 import { Search, Building2, Check, ArrowLeft, MapPin, Clock, AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useSearchStore, type Company } from "@/stores/searchStore";
+
+const MICROCOPY = [
+  "강남역 직장인 73%가 몰랐던 숨은 동네",
+  "판교 출퇴근 평균 47분 → 22분으로",
+  "월 12만원 추가로 매일 1시간 되찾기",
+] as const;
 import { toast } from "@/hooks/use-toast";
 import { trackEvent, getAnalysisCount, incrementAnalysisCount } from "@/lib/analytics";
 import OnboardingTooltip from "@/components/OnboardingTooltip";
@@ -31,15 +30,12 @@ const SearchPage = () => {
   const [confirmedId, setConfirmedId] = useState<string | null>(null);
   const [hasTyped, setHasTyped] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [socialCount, setSocialCount] = useState(SOCIAL_PROOF_INITIAL);
-  const [isPulsing, setIsPulsing] = useState(false);
+  const [neighborhoodCount, setNeighborhoodCount] = useState<number | null>(null);
   const [microcopyIndex, setMicrocopyIndex] = useState(0);
   const [microcopyVisible, setMicrocopyVisible] = useState(true);
   const [typedText, setTypedText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
-  const socialTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const pulseTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const mountTimeRef = useRef<number>(Date.now());
   const hasFocusedRef = useRef(false);
   const attemptCountRef = useRef(0);
@@ -58,19 +54,14 @@ const SearchPage = () => {
     document.title = "회사 검색 | ComHome";
   }, [loadRecentSearches]);
 
-  // Social proof counter: +1 every 30~120 seconds
+  // Fetch real neighborhood analysis count from Supabase
   useEffect(() => {
-    const tick = () => {
-      setSocialCount((prev) => prev + 1);
-      setIsPulsing(true);
-      pulseTimerRef.current = setTimeout(() => setIsPulsing(false), 600);
-      socialTimerRef.current = setTimeout(tick, (30 + Math.random() * 90) * 1000);
-    };
-    socialTimerRef.current = setTimeout(tick, (30 + Math.random() * 90) * 1000);
-    return () => {
-      clearTimeout(socialTimerRef.current);
-      clearTimeout(pulseTimerRef.current);
-    };
+    supabase
+      .from("recommended_neighborhoods")
+      .select("*", { count: "exact", head: true })
+      .then(({ count }) => {
+        if (count !== null) setNeighborhoodCount(count);
+      });
   }, []);
 
   // Microcopy rotator: cycle every 5 seconds with fade
@@ -301,15 +292,19 @@ const SearchPage = () => {
           뒤로가기
         </button>
 
-        {/* Social proof counter */}
+        {/* Social proof stat */}
         <p className="text-center text-xs text-muted-foreground animate-fade-up">
-          지금{" "}
-          <span
-            className={`inline-block font-semibold text-foreground tabular-nums${isPulsing ? " animate-number-pulse" : ""}`}
-          >
-            {socialCount.toLocaleString()}
-          </span>
-          명이 출퇴근 30분 동네를 찾았습니다
+          서울 직장인 평균 통근 시간{" "}
+          <span className="font-semibold text-foreground">47분</span>
+          {neighborhoodCount !== null && (
+            <>
+              {" · "}지금까지{" "}
+              <span className="font-semibold text-foreground tabular-nums">
+                {neighborhoodCount.toLocaleString()}
+              </span>
+              개 동네가 분석되었습니다
+            </>
+          )}
         </p>
 
         {/* Header */}

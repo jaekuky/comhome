@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Users, ChevronLeft, ChevronRight } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 const testimonials = [
   {
@@ -19,41 +20,19 @@ const testimonials = [
   },
 ];
 
-function AnimatedCounter({ target }: { target: number }) {
-  const [count, setCount] = useState(0);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          let start = 0;
-          const duration = 1500;
-          const step = (timestamp: number) => {
-            if (!start) start = timestamp;
-            const progress = Math.min((timestamp - start) / duration, 1);
-            setCount(Math.floor(progress * target));
-            if (progress < 1) requestAnimationFrame(step);
-          };
-          requestAnimationFrame(step);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.5 }
-    );
-    if (ref.current) observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, [target]);
-
-  return (
-    <div ref={ref} className="text-3xl font-extrabold gradient-primary-text">
-      {count.toLocaleString()}명
-    </div>
-  );
-}
 
 const SocialProofSection = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [neighborhoodCount, setNeighborhoodCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from("recommended_neighborhoods")
+      .select("*", { count: "exact", head: true })
+      .then(({ count }) => {
+        if (count !== null) setNeighborhoodCount(count);
+      });
+  }, []);
 
   const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % testimonials.length);
   const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + testimonials.length) % testimonials.length);
@@ -66,9 +45,11 @@ const SocialProofSection = () => {
           <div className="flex h-12 w-12 items-center justify-center rounded-full gradient-primary">
             <Users className="h-6 w-6 text-primary-foreground" />
           </div>
-          <AnimatedCounter target={3200} />
+          <div className="text-3xl font-extrabold gradient-primary-text">
+            {neighborhoodCount !== null ? neighborhoodCount.toLocaleString() : "—"}
+          </div>
           <p className="text-sm text-muted-foreground">
-            매달 2시간의 출퇴근 시간을 절약한 직장인
+            지금까지 분석된 통근 가능 동네 수
           </p>
         </div>
 

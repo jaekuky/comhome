@@ -4,6 +4,11 @@ import { Search, Building2, Check, ArrowLeft, MapPin, Clock, AlertCircle, Refres
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useSearchStore, type Company } from "@/stores/searchStore";
+import { searchKakaoAddress, isMetroArea } from "@/lib/kakaoAddress";
+
+interface SearchResult extends Company {
+  source: "company" | "address";
+}
 
 const MICROCOPY = [
   "강남역 직장인 73%가 몰랐던 숨은 동네",
@@ -23,7 +28,7 @@ const TYPING_RESTART_DELAY_MS = 400;
 const SearchPage = () => {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Company[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFocused, setIsFocused] = useState(false);
@@ -115,21 +120,37 @@ const SearchPage = () => {
     setError(null);
 
     try {
-      const { data, error: dbError } = await supabase
-        .from("companies")
-        .select("*")
-        .or(`name.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%`)
-        .limit(5);
+      const [supabaseResult, kakaoResult] = await Promise.allSettled([
+        supabase
+          .from("companies")
+          .select("*")
+          .or(`name.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%`)
+          .limit(5),
+        searchKakaoAddress(searchQuery),
+      ]);
 
-      if (dbError) throw dbError;
-      setResults((data as Company[]) || []);
+      const companyResults: SearchResult[] =
+        supabaseResult.status === "fulfilled" && supabaseResult.value.data
+          ? (supabaseResult.value.data as Company[]).map((c) => ({ ...c, source: "company" as const }))
+          : [];
+
+      const addressResults: SearchResult[] =
+        kakaoResult.status === "fulfilled"
+          ? kakaoResult.value.map((a) => ({ ...a, source: "address" as const }))
+          : [];
+
+      if (supabaseResult.status === "rejected") {
+        const message =
+          supabaseResult.reason instanceof Error ? supabaseResult.reason.message : "";
+        setError(message.includes("fetch") || message.includes("network") ? "network" : "unknown");
+        setResults([]);
+        return;
+      }
+
+      setResults([...companyResults, ...addressResults]);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "";
-      if (message.includes("fetch") || message.includes("network")) {
-        setError("network");
-      } else {
-        setError("unknown");
-      }
+      setError(message.includes("fetch") || message.includes("network") ? "network" : "unknown");
       setResults([]);
     } finally {
       setLoading(false);
@@ -162,7 +183,7 @@ const SearchPage = () => {
     }
   };
 
-  const handleSelectCompany = (company: Company, inputMethod: "autocomplete" | "quick_access" = "autocomplete") => {
+  const handleSelectCompany = (company: SearchResult, inputMethod: "autocomplete" | "quick_access" = "autocomplete") => {
     attemptCountRef.current += 1;
     setSelectedCompany(company);
     setQuery(company.name);
@@ -175,10 +196,17 @@ const SearchPage = () => {
       attempt_count: attemptCountRef.current,
     });
 
-    if (!company.district.match(/(구|시|군)$/)) {
+    const outOfArea =
+      company.source === "address"
+        ? company.latitude !== null &&
+          company.longitude !== null &&
+          !isMetroArea(company.latitude, company.longitude, company.address)
+        : !company.district.match(/(구|시|군)$/);
+
+    if (outOfArea) {
       toast({
         title: "서비스 지역 안내",
-        description: "현재 서울/경기 지역만 지원합니다",
+        description: "현재 서비스 지역(서울/경기/인천)이 아닙니다",
         variant: "destructive",
       });
       return;
@@ -365,8 +393,8 @@ const SearchPage = () => {
             />
             {/* Confidence tick */}
             {confirmedId && (
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 animate-pop-in">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full gradient-primary">
+              <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full gradient-primary animate-pop-in">
                   <Check className="h-3.5 w-3.5 text-primary-foreground" />
                 </div>
               </div>
@@ -405,19 +433,20 @@ const SearchPage = () => {
               {!loading && !error && results.length === 0 && query.length >= 2 && (
                 <div className="p-5 text-center space-y-3">
                   <p className="text-sm text-muted-foreground">
-                    찾으시는 회사가 없나요?
+                    결과가 없습니다. 정확한 주소를 입력해주세요
                   </p>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const directCompany: Company = {
+                      const directCompany: SearchResult = {
                         id: "direct-" + Date.now(),
                         name: query,
                         address: query,
                         district: "직접입력",
                         latitude: null,
                         longitude: null,
+                        source: "address" as const,
                       };
                       handleSelectCompany(directCompany);
                     }}
@@ -439,13 +468,27 @@ const SearchPage = () => {
                     idx === activeIndex ? "bg-muted/50" : ""
                   }`}
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Building2 className="h-4 w-4 text-primary" />
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                    company.source === "company" ? "bg-primary/10" : "bg-muted"
+                  }`}>
+                    {company.source === "company"
+                      ? <Building2 className="h-4 w-4 text-primary" />
+                      : <MapPin className="h-4 w-4 text-muted-foreground" />
+                    }
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">
-                      {company.name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-foreground truncate">
+                        {company.name}
+                      </p>
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        company.source === "company"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-muted text-muted-foreground"
+                      }`}>
+                        {company.source === "company" ? "회사" : "주소"}
+                      </span>
+                    </div>
                     <p className="text-xs text-muted-foreground truncate">
                       {company.address}
                     </p>
@@ -464,7 +507,7 @@ const SearchPage = () => {
               {recentSearches.map((company) => (
                 <button
                   key={company.id}
-                  onClick={() => handleSelectCompany(company)}
+                  onClick={() => handleSelectCompany({ ...company, source: "company" })}
                   className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors border-b border-border last:border-b-0"
                 >
                   <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />

@@ -13,6 +13,20 @@ import SummaryCards from "@/components/result/SummaryCards";
 import FilterTabs, { type SortMode } from "@/components/result/FilterTabs";
 import NeighborhoodCard, { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
 
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLng = (lng2 - lng1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function isValidUUID(str: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
 interface RawRecommendedRow {
   rank: number;
   commute_minutes: number;
@@ -44,49 +58,100 @@ const ResultPage = () => {
     }
   }, [company]);
 
-  const fetchResults = useCallback(async (companyId: string) => {
-    const { data, error } = await supabase
-      .from("recommended_neighborhoods")
-      .select(`
-        rank,
-        commute_minutes,
-        commute_route,
-        savings_amount,
-        neighborhoods:neighborhood_id (
-          id,
-          name,
-          district,
-          city,
-          avg_rent
-        )
-      `)
-      .eq("company_id", companyId)
-      .order("rank", { ascending: true })
-      .limit(10);
+  const fetchResults = useCallback(async () => {
+    if (!company) return;
 
-    if (error || !data || data.length === 0) {
+    if (isValidUUID(company.id)) {
+      // 등록 회사: 사전 계산된 추천 동네 조회
+      const { data, error } = await supabase
+        .from("recommended_neighborhoods")
+        .select(`
+          rank,
+          commute_minutes,
+          commute_route,
+          savings_amount,
+          neighborhoods:neighborhood_id (
+            id,
+            name,
+            district,
+            city,
+            avg_rent
+          )
+        `)
+        .eq("company_id", company.id)
+        .order("rank", { ascending: true })
+        .limit(10);
+
+      if (error || !data || data.length === 0) {
+        setPhase("empty");
+        return;
+      }
+
+      const mapped: NeighborhoodResult[] = (data as RawRecommendedRow[]).map((r) => ({
+        id: r.neighborhoods.id,
+        name: r.neighborhoods.name,
+        district: r.neighborhoods.district,
+        city: r.neighborhoods.city,
+        avg_rent: r.neighborhoods.avg_rent,
+        commute_minutes: r.commute_minutes,
+        commute_route: r.commute_route,
+        savings_amount: r.savings_amount,
+        rank: r.rank,
+      }));
+
+      setResults(mapped);
+    } else if (company.latitude !== null && company.longitude !== null) {
+      // 카카오 주소: 위경도 기반 근접 동네 탐색
+      const { data: neighborhoods } = await supabase
+        .from("neighborhoods")
+        .select("id, name, district, city, avg_rent, latitude, longitude");
+
+      if (!neighborhoods || neighborhoods.length === 0) {
+        setPhase("empty");
+        return;
+      }
+
+      const nearby = neighborhoods
+        .filter((n) => n.latitude !== null && n.longitude !== null)
+        .map((n) => {
+          const km = haversineKm(
+            company.latitude as number,
+            company.longitude as number,
+            n.latitude as number,
+            n.longitude as number
+          );
+          return { ...n, commute_minutes: Math.round(km * 2.5) };
+        })
+        .filter((n) => n.commute_minutes <= 30)
+        .sort((a, b) => a.commute_minutes - b.commute_minutes)
+        .slice(0, 10);
+
+      if (nearby.length === 0) {
+        setPhase("empty");
+        return;
+      }
+
+      const mapped: NeighborhoodResult[] = nearby.map((n, i) => ({
+        id: n.id,
+        name: n.name,
+        district: n.district,
+        city: n.city,
+        avg_rent: n.avg_rent,
+        commute_minutes: n.commute_minutes,
+        commute_route: null,
+        savings_amount: 0,
+        rank: i + 1,
+      }));
+
+      setResults(mapped);
+    } else {
       setPhase("empty");
-      return;
     }
-
-    const mapped: NeighborhoodResult[] = (data as RawRecommendedRow[]).map((r) => ({
-      id: r.neighborhoods.id,
-      name: r.neighborhoods.name,
-      district: r.neighborhoods.district,
-      city: r.neighborhoods.city,
-      avg_rent: r.neighborhoods.avg_rent,
-      commute_minutes: r.commute_minutes,
-      commute_route: r.commute_route,
-      savings_amount: r.savings_amount,
-      rank: r.rank,
-    }));
-
-    setResults(mapped);
-  }, []);
+  }, [company]);
 
   useEffect(() => {
     if (company?.id) {
-      fetchResults(company.id);
+      fetchResults();
     }
   }, [company, fetchResults]);
 

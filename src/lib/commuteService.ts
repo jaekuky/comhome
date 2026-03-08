@@ -8,6 +8,12 @@ export interface CommuteResult {
   isEstimated: boolean;     // 혼잡도 가중치 적용 여부
 }
 
+export interface OdsayServiceResult {
+  results: CommuteResult[];
+  fromCache: boolean;
+  errors: string[];
+}
+
 interface Company {
   latitude: number | null;
   longitude: number | null;
@@ -31,18 +37,21 @@ export function applyRushHourWeight(commuteMinutes: number, departureHour: strin
   return Math.round(commuteMinutes * multiplier);
 }
 
-async function calcByOdsay(
+export async function calcByOdsay(
   company: Company,
   neighborhoods: Neighborhood[],
-): Promise<CommuteResult[]> {
+): Promise<OdsayServiceResult> {
   if (!company.latitude || !company.longitude || neighborhoods.length === 0) {
-    return [];
+    return { results: [], fromCache: false, errors: [] };
   }
 
   try {
     const res = await fetch(EDGE_FUNCTION_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
       body: JSON.stringify({
         companyLat: company.latitude,
         companyLng: company.longitude,
@@ -55,10 +64,18 @@ async function calcByOdsay(
     }
 
     const data = await res.json();
-    return (data.results ?? []) as CommuteResult[];
+    return {
+      results: (data.results ?? []) as CommuteResult[],
+      fromCache: data.fromCache ?? false,
+      errors: data.errors ?? [],
+    };
   } catch (err) {
     console.error("[commuteService] calcByOdsay 실패:", err);
-    return [];
+    return {
+      results: [],
+      fromCache: false,
+      errors: [err instanceof Error ? err.message : "알 수 없는 오류"],
+    };
   }
 }
 
@@ -81,7 +98,7 @@ export async function calcCommuteTime(
   neighborhoods: Neighborhood[],
   departureHour: string = '08:00-09:00',
 ): Promise<CommuteResult[]> {
-  const raw = await calcByOdsay(company, neighborhoods);
+  const { results: raw } = await calcByOdsay(company, neighborhoods);
   // MAU 1,000+ 시 calcByOdsay → calcByKakaoMobility로 변경
   return raw.map((r) => ({
     ...r,

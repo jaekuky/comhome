@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, Share2, SearchX } from "lucide-react";
+import { ArrowLeft, Share2, SearchX, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { type Company } from "@/stores/searchStore";
 import { toast } from "@/hooks/use-toast";
 import { trackEvent } from "@/lib/analytics";
-import { applyRushHourWeight, RUSH_HOUR_MULTIPLIER } from "@/lib/commuteService";
+import { applyRushHourWeight, RUSH_HOUR_MULTIPLIER, calcByOdsay } from "@/lib/commuteService";
 import OnboardingTooltip from "@/components/OnboardingTooltip";
 import NarrativeLoading from "@/components/result/NarrativeLoading";
 import InsightBanner from "@/components/result/InsightBanner";
@@ -47,7 +47,8 @@ const ResultPage = () => {
   const location = useLocation();
   const company = (location.state as { company?: Company })?.company;
 
-  const [phase, setPhase] = useState<"loading" | "results" | "empty">("loading");
+  const [phase, setPhase] = useState<"loading" | "results" | "empty" | "error">("loading");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [results, setResults] = useState<NeighborhoodResult[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("rank");
   const [nudgeActive, setNudgeActive] = useState(false);
@@ -72,7 +73,7 @@ const ResultPage = () => {
     if (!company) return;
 
     if (isValidUUID(company.id)) {
-      // 등록 회사: 사전 계산된 추천 동네 조회
+      // 등록 회사: 추천 동네 목록 조회 후 ODsay 실시간 통근 시간 계산
       const { data, error } = await supabase
         .from("recommended_neighborhoods")
         .select(`
@@ -97,21 +98,36 @@ const ResultPage = () => {
         return;
       }
 
-      const mapped: NeighborhoodResult[] = (data as RawRecommendedRow[]).map((r) => ({
-        id: r.neighborhoods.id,
-        name: r.neighborhoods.name,
-        district: r.neighborhoods.district,
-        city: r.neighborhoods.city,
-        avg_rent: r.neighborhoods.avg_rent,
-        commute_minutes: r.commute_minutes,
-        commute_route: r.commute_route,
-        savings_amount: r.savings_amount,
-        rank: r.rank,
-      }));
+      const rows = data as RawRecommendedRow[];
+
+      // ODsay Edge Function으로 실시간 통근 시간 조회
+      let commuteMap = new Map<string, { commuteMinutes: number; routeSummary: string }>();
+      if (company.latitude !== null && company.longitude !== null) {
+        const { results: odResults } = await calcByOdsay(
+          company,
+          rows.map((r) => ({ id: r.neighborhoods.id })),
+        );
+        commuteMap = new Map(odResults.map((r) => [r.neighborhoodId, r]));
+      }
+
+      const mapped: NeighborhoodResult[] = rows.map((r) => {
+        const od = commuteMap.get(r.neighborhoods.id);
+        return {
+          id: r.neighborhoods.id,
+          name: r.neighborhoods.name,
+          district: r.neighborhoods.district,
+          city: r.neighborhoods.city,
+          avg_rent: r.neighborhoods.avg_rent,
+          commute_minutes: od?.commuteMinutes ?? r.commute_minutes,
+          commute_route: od?.routeSummary ?? r.commute_route,
+          savings_amount: r.savings_amount,
+          rank: r.rank,
+        };
+      });
 
       setResults(mapped);
     } else if (company.latitude !== null && company.longitude !== null) {
-      // 카카오 주소: 위경도 기반 근접 동네 탐색
+      // 미등록 주소: 인근 동네를 ODsay로 실시간 계산
       const { data: neighborhoods } = await supabase
         .from("neighborhoods")
         .select("id, name, district, city, avg_rent, latitude, longitude");
@@ -121,37 +137,65 @@ const ResultPage = () => {
         return;
       }
 
-      const nearby = neighborhoods
+      // Haversine으로 20km 이내 후보만 추려 API 호출 수 제한
+      const candidates = neighborhoods
         .filter((n) => n.latitude !== null && n.longitude !== null)
-        .map((n) => {
-          const km = haversineKm(
-            company.latitude as number,
-            company.longitude as number,
-            n.latitude as number,
-            n.longitude as number
-          );
-          return { ...n, commute_minutes: Math.round(km * 2.5) };
-        })
-        .filter((n) => n.commute_minutes <= 30)
-        .sort((a, b) => a.commute_minutes - b.commute_minutes)
-        .slice(0, 10);
+        .filter(
+          (n) =>
+            haversineKm(
+              company.latitude as number,
+              company.longitude as number,
+              n.latitude as number,
+              n.longitude as number,
+            ) < 20,
+        )
+        .slice(0, 20);
 
-      if (nearby.length === 0) {
+      if (candidates.length === 0) {
         setPhase("empty");
         return;
       }
 
-      const mapped: NeighborhoodResult[] = nearby.map((n, i) => ({
-        id: n.id,
-        name: n.name,
-        district: n.district,
-        city: n.city,
-        avg_rent: n.avg_rent,
-        commute_minutes: n.commute_minutes,
-        commute_route: null,
-        savings_amount: 0,
-        rank: i + 1,
-      }));
+      const { results: odResults, errors } = await calcByOdsay(
+        company,
+        candidates.map((n) => ({ id: n.id })),
+      );
+
+      if (odResults.length === 0) {
+        setErrorMessage(
+          errors.length > 0
+            ? "대중교통 경로를 조회할 수 없습니다. 잠시 후 다시 시도해주세요."
+            : "30분 이내 대중교통으로 도달 가능한 동네를 찾지 못했습니다.",
+        );
+        setPhase("error");
+        return;
+      }
+
+      const neighborhoodMap = new Map(candidates.map((n) => [n.id, n]));
+      const filtered = odResults
+        .filter((r) => r.commuteMinutes <= 30)
+        .sort((a, b) => a.commuteMinutes - b.commuteMinutes)
+        .slice(0, 10);
+
+      if (filtered.length === 0) {
+        setPhase("empty");
+        return;
+      }
+
+      const mapped: NeighborhoodResult[] = filtered.map((r, i) => {
+        const nb = neighborhoodMap.get(r.neighborhoodId)!;
+        return {
+          id: r.neighborhoodId,
+          name: nb.name,
+          district: nb.district,
+          city: nb.city,
+          avg_rent: nb.avg_rent,
+          commute_minutes: r.commuteMinutes,
+          commute_route: r.routeSummary,
+          savings_amount: 0,
+          rank: i + 1,
+        };
+      });
 
       setResults(mapped);
     } else {
@@ -172,8 +216,11 @@ const ResultPage = () => {
   }, [phase]);
 
   const handleLoadingComplete = useCallback(() => {
+    setPhase((prev) => {
+      if (prev === "error") return "error";
+      return results.length > 0 ? "results" : "empty";
+    });
     const next = results.length > 0 ? "results" : "empty";
-    setPhase(next);
     if (next === "results") {
       const loadTimeMs = Date.now() - pageLoadTimeRef.current;
       trackEvent("analysis_completed", { company_id: company?.id, count: results.length });
@@ -311,6 +358,21 @@ const ResultPage = () => {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {phase === "error" && (
+          <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4 animate-fade-in">
+            <AlertTriangle className="h-12 w-12 text-destructive" />
+            <p className="text-base font-medium text-foreground text-center">
+              {errorMessage ?? "대중교통 경로를 조회할 수 없습니다."}
+            </p>
+            <p className="text-sm text-muted-foreground text-center">
+              잠시 후 다시 시도해주세요
+            </p>
+            <Button variant="outline" size="lg" onClick={() => { setPhase("loading"); fetchResults(); }}>
+              다시 시도
+            </Button>
           </div>
         )}
 

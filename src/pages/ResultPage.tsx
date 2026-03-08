@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { type Company } from "@/stores/searchStore";
 import { toast } from "@/hooks/use-toast";
 import { trackEvent } from "@/lib/analytics";
+import { applyRushHourWeight, RUSH_HOUR_MULTIPLIER } from "@/lib/commuteService";
 import OnboardingTooltip from "@/components/OnboardingTooltip";
 import NarrativeLoading from "@/components/result/NarrativeLoading";
 import InsightBanner from "@/components/result/InsightBanner";
@@ -50,7 +51,16 @@ const ResultPage = () => {
   const [results, setResults] = useState<NeighborhoodResult[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("rank");
   const [nudgeActive, setNudgeActive] = useState(false);
+  const [departureHour, setDepartureHour] = useState<string>('08:00-09:00');
   const pageLoadTimeRef = useRef<number>(Date.now());
+
+  const weightedResults = useMemo(
+    () => results.map((r) => ({
+      ...r,
+      commute_minutes: applyRushHourWeight(r.commute_minutes, departureHour),
+    })),
+    [results, departureHour]
+  );
 
   useEffect(() => {
     if (company) {
@@ -186,16 +196,16 @@ const ResultPage = () => {
   };
 
   const sorted = useMemo(() => {
-    const arr = [...results];
+    const arr = [...weightedResults];
     if (sortMode === "commute") arr.sort((a, b) => a.commute_minutes - b.commute_minutes);
     else if (sortMode === "rent") arr.sort((a, b) => a.avg_rent - b.avg_rent);
     else arr.sort((a, b) => a.rank - b.rank);
     return arr;
-  }, [results, sortMode]);
+  }, [weightedResults, sortMode]);
 
   const avgCommute = useMemo(
-    () => results.length ? Math.round(results.reduce((s, r) => s + r.commute_minutes, 0) / results.length) : 0,
-    [results]
+    () => weightedResults.length ? Math.round(weightedResults.reduce((s, r) => s + r.commute_minutes, 0) / weightedResults.length) : 0,
+    [weightedResults]
   );
   const avgSavings = useMemo(
     () => results.length ? Math.round(results.reduce((s, r) => s + r.savings_amount, 0) / results.length) : 0,
@@ -203,8 +213,8 @@ const ResultPage = () => {
   );
   // 현재 통근 시간 추정: 추천 동네 최대 통근의 1.8배 (최소 45분)
   const estimatedCurrentCommute = useMemo(
-    () => results.length ? Math.max(45, Math.round(Math.max(...results.map((r) => r.commute_minutes)) * 1.8)) : 50,
-    [results]
+    () => weightedResults.length ? Math.max(45, Math.round(Math.max(...weightedResults.map((r) => r.commute_minutes)) * 1.8)) : 50,
+    [weightedResults]
   );
 
   if (!company) {
@@ -256,6 +266,26 @@ const ResultPage = () => {
 
             <InsightBanner currentCommute={estimatedCurrentCommute} avgRecommendedCommute={avgCommute} />
             <SummaryCards neighborhoodCount={results.length} avgCommute={avgCommute} avgSavings={avgSavings} />
+
+            {/* 출근 시간대 선택 */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground">출근 시간대</span>
+              {(Object.keys(RUSH_HOUR_MULTIPLIER) as string[]).map((slot) => (
+                <button
+                  key={slot}
+                  type="button"
+                  onClick={() => setDepartureHour(slot)}
+                  className={[
+                    "text-xs px-2.5 py-1 rounded-full border transition-colors",
+                    departureHour === slot
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "text-muted-foreground border-muted hover:border-primary",
+                  ].join(" ")}
+                >
+                  {slot === 'default' ? '평시' : `${slot.slice(0, 2)}시대`}
+                </button>
+              ))}
+            </div>
 
             {/* Filter with onboarding */}
             <div className="relative">

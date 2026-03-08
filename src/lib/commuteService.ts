@@ -5,6 +5,7 @@ export interface CommuteResult {
   transferCount: number;
   walkMinutes: number;
   totalFare: number;        // 총 교통비 (원)
+  isEstimated: boolean;     // 혼잡도 가중치 적용 여부
 }
 
 interface Company {
@@ -17,6 +18,18 @@ interface Neighborhood {
 }
 
 const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/commute-calc`;
+
+export const RUSH_HOUR_MULTIPLIER: Record<string, number> = {
+  '07:00-08:00': 1.15,    // 혼잡도 15% 추가
+  '08:00-09:00': 1.20,    // 최혼잡 시간대
+  '09:00-10:00': 1.10,    // 혼잡도 10% 추가
+  default: 1.0,
+};
+
+export function applyRushHourWeight(commuteMinutes: number, departureHour: string): number {
+  const multiplier = RUSH_HOUR_MULTIPLIER[departureHour] ?? RUSH_HOUR_MULTIPLIER['default'];
+  return Math.round(commuteMinutes * multiplier);
+}
 
 async function calcByOdsay(
   company: Company,
@@ -66,7 +79,13 @@ async function calcByOdsay(
 export async function calcCommuteTime(
   company: Company,
   neighborhoods: Neighborhood[],
+  departureHour: string = '08:00-09:00',
 ): Promise<CommuteResult[]> {
-  return calcByOdsay(company, neighborhoods);
-  // MAU 1,000+ 시 이 한 줄만 calcByKakaoMobility로 변경
+  const raw = await calcByOdsay(company, neighborhoods);
+  // MAU 1,000+ 시 calcByOdsay → calcByKakaoMobility로 변경
+  return raw.map((r) => ({
+    ...r,
+    commuteMinutes: applyRushHourWeight(r.commuteMinutes, departureHour),
+    isEstimated: true,
+  }));
 }

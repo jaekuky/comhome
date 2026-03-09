@@ -7,12 +7,16 @@ import { type Company } from "@/stores/searchStore";
 import { toast } from "@/hooks/use-toast";
 import { trackEvent } from "@/lib/analytics";
 import { applyRushHourWeight, RUSH_HOUR_MULTIPLIER, calcByOdsay } from "@/lib/commuteService";
+import type { CommuteResult } from "@/lib/commuteService";
 import OnboardingTooltip from "@/components/OnboardingTooltip";
 import NarrativeLoading from "@/components/result/NarrativeLoading";
 import InsightBanner from "@/components/result/InsightBanner";
 import SummaryCards from "@/components/result/SummaryCards";
 import FilterTabs, { type SortMode } from "@/components/result/FilterTabs";
 import NeighborhoodCard, { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
+import CommuteHeatmap, { type Neighborhood as HeatmapNeighborhood } from "@/components/map/CommuteHeatmap";
+
+// ---------- 유틸 ----------
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
@@ -28,6 +32,17 @@ function isValidUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 }
 
+// ---------- 시간대 레이블 ----------
+
+const SLOT_LABELS: Record<string, string> = {
+  '07:00-08:00': '07-08시',
+  '08:00-09:00': '08-09시',
+  '09:00-10:00': '09-10시',
+  'default': '기타',
+};
+
+// ---------- Supabase 행 타입 ----------
+
 interface RawRecommendedRow {
   rank: number;
   commute_minutes: number;
@@ -39,8 +54,12 @@ interface RawRecommendedRow {
     district: string;
     city: string;
     avg_rent: number;
+    latitude: number | null;
+    longitude: number | null;
   };
 }
+
+// ---------- 컴포넌트 ----------
 
 const ResultPage = () => {
   const navigate = useNavigate();
@@ -50,6 +69,8 @@ const ResultPage = () => {
   const [phase, setPhase] = useState<"loading" | "results" | "empty" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [results, setResults] = useState<NeighborhoodResult[]>([]);
+  const [rawCommuteResults, setRawCommuteResults] = useState<CommuteResult[]>([]);
+  const [heatmapNeighborhoods, setHeatmapNeighborhoods] = useState<HeatmapNeighborhood[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("rank");
   const [nudgeActive, setNudgeActive] = useState(false);
   const [departureHour, setDepartureHour] = useState<string>('08:00-09:00');
@@ -60,7 +81,7 @@ const ResultPage = () => {
       ...r,
       commute_minutes: applyRushHourWeight(r.commute_minutes, departureHour),
     })),
-    [results, departureHour]
+    [results, departureHour],
   );
 
   useEffect(() => {
@@ -73,7 +94,7 @@ const ResultPage = () => {
     if (!company) return;
 
     if (isValidUUID(company.id)) {
-      // 등록 회사: 추천 동네 목록 조회 후 ODsay 실시간 통근 시간 계산
+      // 등록 회사: recommended_neighborhoods + ODsay 실시간 보정
       const { data, error } = await supabase
         .from("recommended_neighborhoods")
         .select(`
@@ -86,7 +107,9 @@ const ResultPage = () => {
             name,
             district,
             city,
-            avg_rent
+            avg_rent,
+            latitude,
+            longitude
           )
         `)
         .eq("company_id", company.id)
@@ -101,12 +124,14 @@ const ResultPage = () => {
       const rows = data as RawRecommendedRow[];
 
       // ODsay Edge Function으로 실시간 통근 시간 조회
-      let commuteMap = new Map<string, { commuteMinutes: number; routeSummary: string }>();
+      let commuteMap = new Map<string, CommuteResult>();
+      let odRaw: CommuteResult[] = [];
       if (company.latitude !== null && company.longitude !== null) {
         const { results: odResults } = await calcByOdsay(
           company,
           rows.map((r) => ({ id: r.neighborhoods.id })),
         );
+        odRaw = odResults;
         commuteMap = new Map(odResults.map((r) => [r.neighborhoodId, r]));
       }
 
@@ -119,15 +144,35 @@ const ResultPage = () => {
           city: r.neighborhoods.city,
           avg_rent: r.neighborhoods.avg_rent,
           commute_minutes: od?.commuteMinutes ?? r.commute_minutes,
-          commute_route: od?.routeSummary ?? r.commute_route,
+          commute_route: od?.routeSummary ?? r.commute_route ?? "",
           savings_amount: r.savings_amount,
           rank: r.rank,
         };
       });
 
+      // 히트맵용 데이터 세팅
+      const heatNeighborhoods: HeatmapNeighborhood[] = rows.flatMap((r) => {
+        const { id, name, latitude, longitude } = r.neighborhoods;
+        if (latitude === null || longitude === null) return [];
+        return [{ id, name, lat: latitude, lng: longitude }];
+      });
+
+      // ODsay 결과가 없으면 정적 데이터 기반으로 CommuteResult 합성
+      const fallbackOd: CommuteResult[] = rows.map((r) => ({
+        neighborhoodId: r.neighborhoods.id,
+        commuteMinutes: r.commute_minutes,
+        routeSummary: r.commute_route ?? "",
+        transferCount: 0,
+        walkMinutes: 0,
+        totalFare: 0,
+        isEstimated: false,
+      }));
+
+      setRawCommuteResults(odRaw.length > 0 ? odRaw : fallbackOd);
+      setHeatmapNeighborhoods(heatNeighborhoods);
       setResults(mapped);
     } else if (company.latitude !== null && company.longitude !== null) {
-      // 미등록 주소: 인근 동네를 ODsay로 실시간 계산
+      // 미등록 주소: 인근 동네 ODsay 실시간 계산
       const { data: neighborhoods } = await supabase
         .from("neighborhoods")
         .select("id, name, district, city, avg_rent, latitude, longitude");
@@ -137,19 +182,28 @@ const ResultPage = () => {
         return;
       }
 
-      // Haversine으로 20km 이내 후보만 추려 API 호출 수 제한
-      const candidates = neighborhoods
-        .filter((n) => n.latitude !== null && n.longitude !== null)
-        .filter(
-          (n) =>
-            haversineKm(
-              company.latitude as number,
-              company.longitude as number,
-              n.latitude as number,
-              n.longitude as number,
-            ) < 20,
-        )
-        .slice(0, 20);
+      // 동적 반경: 후보가 MIN_CANDIDATES 미만이면 반경을 단계적으로 확장
+      const MIN_CANDIDATES = 5;
+      const RADIUS_STEPS_KM = [20, 30, 40, 60];
+      const validNeighborhoods = neighborhoods.filter(
+        (n) => n.latitude !== null && n.longitude !== null,
+      );
+
+      let candidates: typeof validNeighborhoods = [];
+      for (const radius of RADIUS_STEPS_KM) {
+        candidates = validNeighborhoods
+          .filter(
+            (n) =>
+              haversineKm(
+                company.latitude as number,
+                company.longitude as number,
+                n.latitude as number,
+                n.longitude as number,
+              ) < radius,
+          )
+          .slice(0, 20);
+        if (candidates.length >= MIN_CANDIDATES) break;
+      }
 
       if (candidates.length === 0) {
         setPhase("empty");
@@ -182,9 +236,10 @@ const ResultPage = () => {
         return;
       }
 
-      const mapped: NeighborhoodResult[] = filtered.map((r, i) => {
-        const nb = neighborhoodMap.get(r.neighborhoodId)!;
-        return {
+      const mapped: NeighborhoodResult[] = filtered.flatMap((r, i) => {
+        const nb = neighborhoodMap.get(r.neighborhoodId);
+        if (!nb) return [];
+        return [{
           id: r.neighborhoodId,
           name: nb.name,
           district: nb.district,
@@ -194,9 +249,17 @@ const ResultPage = () => {
           commute_route: r.routeSummary,
           savings_amount: 0,
           rank: i + 1,
-        };
+        }];
       });
 
+      // 히트맵용 데이터 세팅
+      const heatNeighborhoods: HeatmapNeighborhood[] = candidates.flatMap((n) => {
+        if (n.latitude === null || n.longitude === null) return [];
+        return [{ id: n.id, name: n.name, lat: n.latitude, lng: n.longitude }];
+      });
+
+      setRawCommuteResults(odResults);
+      setHeatmapNeighborhoods(heatNeighborhoods);
       setResults(mapped);
     } else {
       setPhase("empty");
@@ -251,18 +314,29 @@ const ResultPage = () => {
   }, [weightedResults, sortMode]);
 
   const avgCommute = useMemo(
-    () => weightedResults.length ? Math.round(weightedResults.reduce((s, r) => s + r.commute_minutes, 0) / weightedResults.length) : 0,
-    [weightedResults]
+    () => weightedResults.length
+      ? Math.round(weightedResults.reduce((s, r) => s + r.commute_minutes, 0) / weightedResults.length)
+      : 0,
+    [weightedResults],
   );
   const avgSavings = useMemo(
-    () => results.length ? Math.round(results.reduce((s, r) => s + r.savings_amount, 0) / results.length) : 0,
-    [results]
+    () => results.length
+      ? Math.round(results.reduce((s, r) => s + r.savings_amount, 0) / results.length)
+      : 0,
+    [results],
   );
-  // 현재 통근 시간 추정: 추천 동네 최대 통근의 1.8배 (최소 45분)
   const estimatedCurrentCommute = useMemo(
-    () => weightedResults.length ? Math.max(45, Math.round(Math.max(...weightedResults.map((r) => r.commute_minutes)) * 1.8)) : 50,
-    [weightedResults]
+    () => weightedResults.length
+      ? Math.max(45, Math.round(Math.max(...weightedResults.map((r) => r.commute_minutes)) * 1.8))
+      : 50,
+    [weightedResults],
   );
+
+  // 히트맵 표시 조건: 회사 좌표 + 동네 데이터 모두 있을 때
+  const companyCoords = company?.latitude && company?.longitude
+    ? { lat: company.latitude, lng: company.longitude }
+    : null;
+  const showHeatmap = companyCoords !== null && heatmapNeighborhoods.length > 0;
 
   if (!company) {
     return (
@@ -278,9 +352,11 @@ const ResultPage = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="mobile-container py-6 space-y-5">
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <button
+            type="button"
             onClick={() => navigate(-1)}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
             aria-label="뒤로가기"
@@ -290,6 +366,7 @@ const ResultPage = () => {
           </button>
           {phase === "results" && (
             <button
+              type="button"
               onClick={handleShare}
               className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
               aria-label="결과 공유하기"
@@ -300,28 +377,40 @@ const ResultPage = () => {
           )}
         </div>
 
+        {/* 로딩 */}
         {phase === "loading" && (
           <NarrativeLoading companyName={company.name} onComplete={handleLoadingComplete} />
         )}
 
+        {/* 결과 */}
         {phase === "results" && (
           <div className="space-y-5 animate-fade-in">
             <div>
               <h1 className="text-xl font-bold text-foreground">{company.name} 추천 동네</h1>
-              <p className="text-sm text-muted-foreground mt-1">통근 30분 이내 최적의 동네 {results.length}곳</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                통근 30분 이내 최적의 동네 {results.length}곳
+              </p>
             </div>
 
-            <InsightBanner currentCommute={estimatedCurrentCommute} avgRecommendedCommute={avgCommute} />
-            <SummaryCards neighborhoodCount={results.length} avgCommute={avgCommute} avgSavings={avgSavings} />
+            <InsightBanner
+              currentCommute={estimatedCurrentCommute}
+              avgRecommendedCommute={avgCommute}
+            />
+            <SummaryCards
+              neighborhoodCount={results.length}
+              avgCommute={avgCommute}
+              avgSavings={avgSavings}
+            />
 
             {/* 출근 시간대 선택 */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground">출근 시간대</span>
+              <span className="text-xs font-medium text-muted-foreground shrink-0">출근 시간대</span>
               {(Object.keys(RUSH_HOUR_MULTIPLIER) as string[]).map((slot) => (
                 <button
                   key={slot}
                   type="button"
                   onClick={() => setDepartureHour(slot)}
+                  aria-pressed={departureHour === slot ? "true" : "false"}
                   className={[
                     "text-xs px-2.5 py-1 rounded-full border transition-colors",
                     departureHour === slot
@@ -329,53 +418,72 @@ const ResultPage = () => {
                       : "text-muted-foreground border-muted hover:border-primary",
                   ].join(" ")}
                 >
-                  {slot === 'default' ? '평시' : `${slot.slice(0, 2)}시대`}
+                  {SLOT_LABELS[slot] ?? slot}
                 </button>
               ))}
             </div>
 
-            {/* Filter with onboarding */}
-            <div className="relative">
-              <OnboardingTooltip
-                id="result_filter"
-                text="정렬 기준을 바꿔보세요 🔄"
-                position="top"
-              />
-              <FilterTabs value={sortMode} onChange={setSortMode} />
-            </div>
+            {/* 히트맵 */}
+            {showHeatmap && (
+              <section aria-label="통근 시간 지도">
+                <CommuteHeatmap
+                  companyCoords={companyCoords}
+                  commuteResults={rawCommuteResults}
+                  neighborhoods={heatmapNeighborhoods}
+                  departureHour={departureHour}
+                  onNeighborhoodClick={(id) => navigate(`/neighborhood/${id}`)}
+                />
+              </section>
+            )}
 
-            <div className="space-y-3">
-              {sorted.map((r, i) => (
-                <div
-                  key={r.id}
-                  className={[
-                    i === 1 ? "card-peek-1" : i === 2 ? "card-peek-2" : "",
-                    i === 1 && nudgeActive ? "animate-card-nudge" : "",
-                  ].join(" ").trim()}
-                  onAnimationEnd={i === 1 ? () => setNudgeActive(false) : undefined}
-                >
-                  <NeighborhoodCard data={r} index={i} />
-                </div>
-              ))}
+            {/* 카드 목록 */}
+            <div>
+              <div className="relative mb-3">
+                <OnboardingTooltip
+                  id="result_filter"
+                  text="정렬 기준을 바꿔보세요 🔄"
+                  position="top"
+                />
+                <FilterTabs value={sortMode} onChange={setSortMode} />
+              </div>
+
+              <div className="space-y-3">
+                {sorted.map((r, i) => (
+                  <div
+                    key={r.id}
+                    className={[
+                      i === 1 ? "card-peek-1" : i === 2 ? "card-peek-2" : "",
+                      i === 1 && nudgeActive ? "animate-card-nudge" : "",
+                    ].join(" ").trim()}
+                    onAnimationEnd={i === 1 ? () => setNudgeActive(false) : undefined}
+                  >
+                    <NeighborhoodCard data={r} index={i} />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
+        {/* 오류 */}
         {phase === "error" && (
           <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4 animate-fade-in">
             <AlertTriangle className="h-12 w-12 text-destructive" />
             <p className="text-base font-medium text-foreground text-center">
               {errorMessage ?? "대중교통 경로를 조회할 수 없습니다."}
             </p>
-            <p className="text-sm text-muted-foreground text-center">
-              잠시 후 다시 시도해주세요
-            </p>
-            <Button variant="outline" size="lg" onClick={() => { setPhase("loading"); fetchResults(); }}>
+            <p className="text-sm text-muted-foreground text-center">잠시 후 다시 시도해주세요</p>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => { setPhase("loading"); fetchResults(); }}
+            >
               다시 시도
             </Button>
           </div>
         )}
 
+        {/* 결과 없음 */}
         {phase === "empty" && (
           <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4 animate-fade-in">
             <SearchX className="h-12 w-12 text-muted-foreground" />
@@ -385,13 +493,18 @@ const ResultPage = () => {
             <p className="text-sm text-muted-foreground text-center">
               통근 시간을 40분으로 늘려볼까요?
             </p>
-            <Button variant="hero" size="lg" onClick={() => {
-              toast({ title: "40분 기준으로 재분석 중...", description: "곧 결과를 보여드릴게요" });
-            }}>
+            <Button
+              variant="hero"
+              size="lg"
+              onClick={() => {
+                toast({ title: "40분 기준으로 재분석 중...", description: "곧 결과를 보여드릴게요" });
+              }}
+            >
               40분으로 확장해서 다시 찾기
             </Button>
           </div>
         )}
+
       </div>
     </div>
   );

@@ -74,7 +74,10 @@ const ResultPage = () => {
   const [sortMode, setSortMode] = useState<SortMode>("rank");
   const [nudgeActive, setNudgeActive] = useState(false);
   const [departureHour, setDepartureHour] = useState<string>('08:00-09:00');
+  const [isApiReady, setIsApiReady] = useState(false);
   const pageLoadTimeRef = useRef<number>(Date.now());
+  // Tracks the intended final phase so fetchResults doesn't bypass the loading animation
+  const pendingPhaseRef = useRef<"results" | "empty" | "error">("empty");
 
   const weightedResults = useMemo(
     () => results.map((r) => ({
@@ -117,7 +120,8 @@ const ResultPage = () => {
         .limit(10);
 
       if (error || !data || data.length === 0) {
-        setPhase("empty");
+        pendingPhaseRef.current = "empty";
+        setIsApiReady(true);
         return;
       }
 
@@ -171,6 +175,8 @@ const ResultPage = () => {
       setRawCommuteResults(odRaw.length > 0 ? odRaw : fallbackOd);
       setHeatmapNeighborhoods(heatNeighborhoods);
       setResults(mapped);
+      pendingPhaseRef.current = "results";
+      setIsApiReady(true);
     } else if (company.latitude !== null && company.longitude !== null) {
       // 미등록 주소: 인근 동네 ODsay 실시간 계산
       const { data: neighborhoods } = await supabase
@@ -178,7 +184,8 @@ const ResultPage = () => {
         .select("id, name, district, city, avg_rent, latitude, longitude");
 
       if (!neighborhoods || neighborhoods.length === 0) {
-        setPhase("empty");
+        pendingPhaseRef.current = "empty";
+        setIsApiReady(true);
         return;
       }
 
@@ -206,7 +213,8 @@ const ResultPage = () => {
       }
 
       if (candidates.length === 0) {
-        setPhase("empty");
+        pendingPhaseRef.current = "empty";
+        setIsApiReady(true);
         return;
       }
 
@@ -219,7 +227,8 @@ const ResultPage = () => {
 
       if (odResults.length === 0) {
         setErrorMessage("대중교통 경로를 조회할 수 없습니다. 잠시 후 다시 시도해주세요.");
-        setPhase("error");
+        pendingPhaseRef.current = "error";
+        setIsApiReady(true);
         return;
       }
 
@@ -230,7 +239,8 @@ const ResultPage = () => {
         .slice(0, 10);
 
       if (filtered.length === 0) {
-        setPhase("empty");
+        pendingPhaseRef.current = "empty";
+        setIsApiReady(true);
         return;
       }
 
@@ -259,8 +269,11 @@ const ResultPage = () => {
       setRawCommuteResults(odResults);
       setHeatmapNeighborhoods(heatNeighborhoods);
       setResults(mapped);
+      pendingPhaseRef.current = "results";
+      setIsApiReady(true);
     } else {
-      setPhase("empty");
+      pendingPhaseRef.current = "empty";
+      setIsApiReady(true);
     }
   }, [company]);
 
@@ -277,11 +290,8 @@ const ResultPage = () => {
   }, [phase]);
 
   const handleLoadingComplete = useCallback(() => {
-    setPhase((prev) => {
-      if (prev === "error") return "error";
-      return results.length > 0 ? "results" : "empty";
-    });
-    const next = results.length > 0 ? "results" : "empty";
+    const next = pendingPhaseRef.current;
+    setPhase(next);
     if (next === "results") {
       const loadTimeMs = Date.now() - pageLoadTimeRef.current;
       trackEvent("analysis_completed", { company_id: company?.id, count: results.length });
@@ -291,7 +301,7 @@ const ResultPage = () => {
         result_count: results.length,
       });
     }
-  }, [results, company]);
+  }, [company, results.length]);
 
   const handleShare = async () => {
     trackEvent("share_clicked", { company_id: company?.id });
@@ -377,7 +387,7 @@ const ResultPage = () => {
 
         {/* 로딩 */}
         {phase === "loading" && (
-          <NarrativeLoading companyName={company.name} onComplete={handleLoadingComplete} />
+          <NarrativeLoading companyName={company.name} onComplete={handleLoadingComplete} isApiReady={isApiReady} />
         )}
 
         {/* 결과 */}

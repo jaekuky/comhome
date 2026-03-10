@@ -44,6 +44,7 @@ const SearchPage = () => {
   const mountTimeRef = useRef<number>(Date.now());
   const hasFocusedRef = useRef(false);
   const attemptCountRef = useRef(0);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const {
     selectedCompany,
@@ -381,7 +382,10 @@ const SearchPage = () => {
                   });
                 }
               }}
-              onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+              onBlur={() => {
+                clearTimeout(blurTimerRef.current);
+                blurTimerRef.current = setTimeout(() => setIsFocused(false), 200);
+              }}
               onKeyDown={handleKeyDown}
               className={`w-full h-14 rounded-[24px] border bg-card pl-12 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none transition-all duration-300 ${
                 isFocused

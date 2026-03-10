@@ -1,24 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { MapPin } from "lucide-react";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 
 interface NarrativeLoadingProps {
   companyName: string;
   onComplete: () => void;
-}
-
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
-  useEffect(() => {
-    const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, []);
-  return reduced;
+  isApiReady: boolean;
 }
 
 // Step 1: Map zooms into company location
@@ -105,22 +92,34 @@ const LABELS = [
   () => "최적의 동네를 찾았습니다!",
 ] as const;
 
-const NarrativeLoading = ({ companyName, onComplete }: NarrativeLoadingProps) => {
+const NarrativeLoading = ({ companyName, onComplete, isApiReady }: NarrativeLoadingProps) => {
   const [step, setStep] = useState(0);
+  const [animationDone, setAnimationDone] = useState(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
   const reducedMotion = usePrefersReducedMotion();
 
+  // Advance steps: 0→1s→2s, mark done at 3s (min 2s of animation guaranteed)
   useEffect(() => {
     const t1 = setTimeout(() => setStep(1), 1000);
     const t2 = setTimeout(() => setStep(2), 2000);
-    const t3 = setTimeout(() => onCompleteRef.current(), 3000);
+    const t3 = setTimeout(() => setAnimationDone(true), 3000);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
     };
   }, []);
+
+  // Min-Max: call onComplete only when BOTH animation done AND API ready
+  useEffect(() => {
+    if (animationDone && isApiReady) {
+      onCompleteRef.current();
+    }
+  }, [animationDone, isApiReady]);
+
+  // Show waiting spinner after animation completes but API is still pending
+  const showWaitingSpinner = animationDone && !isApiReady;
 
   return (
     <div
@@ -138,15 +137,27 @@ const NarrativeLoading = ({ companyName, onComplete }: NarrativeLoadingProps) =>
         </div>
       )}
 
-      {/* Narrative text */}
-      <p
-        key={step}
-        className={`text-base font-semibold text-foreground text-center px-8 ${
-          reducedMotion ? "" : "animate-fade-up"
-        }`}
-      >
-        {LABELS[step](companyName)}
-      </p>
+      {/* Narrative text or waiting spinner */}
+      {showWaitingSpinner ? (
+        <div className="flex flex-col items-center gap-3">
+          <div
+            className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"
+            aria-hidden="true"
+          />
+          <p className="text-sm text-muted-foreground text-center px-8">
+            조금만 기다려주세요...
+          </p>
+        </div>
+      ) : (
+        <p
+          key={step}
+          className={`text-base font-semibold text-foreground text-center px-8 ${
+            reducedMotion ? "" : "animate-fade-up"
+          }`}
+        >
+          {LABELS[step](companyName)}
+        </p>
+      )}
 
       {/* Step progress dots */}
       <div className="flex gap-2 mt-6" aria-hidden="true">

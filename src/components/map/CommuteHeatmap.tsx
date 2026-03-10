@@ -107,22 +107,26 @@ function InfoPanel({
             <span>{data.result.routeSummary}</span>
           </div>
         )}
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1">
-            <span className="font-medium text-gray-500">환승</span>
-            {data.result.transferCount}회
-          </span>
-          <span className="flex items-center gap-1">
-            <FootprintsIcon className="h-3.5 w-3.5 text-gray-400" />
-            도보 {data.result.walkMinutes}분
-          </span>
-        </div>
+        {data.result.isEstimated && (
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1">
+              <span className="font-medium text-gray-500">환승</span>
+              {data.result.transferCount}회
+            </span>
+            <span className="flex items-center gap-1">
+              <FootprintsIcon className="h-3.5 w-3.5 text-gray-400" />
+              도보 {data.result.walkMinutes}분
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 시간표 안내 */}
-      <p className="mt-3 text-[10px] text-gray-400 leading-snug">
-        * 시간표 기준 추정값이며 실제 소요 시간과 차이가 있을 수 있습니다.
-      </p>
+      {data.result.isEstimated && (
+        <p className="mt-3 text-xs text-gray-500 leading-snug">
+          * 시간표 기준 추정값이며 실제 소요 시간과 차이가 있을 수 있습니다.
+        </p>
+      )}
 
       {/* 상세보기 버튼 */}
       <button
@@ -379,35 +383,37 @@ export default function CommuteHeatmap({
     // 모바일: 세로 스택 / 데스크톱: 60/40 가로 분할
     <div className="flex flex-col md:flex-row w-full gap-0 md:gap-4 h-[640px] md:h-[520px]">
       {/* 지도 영역 */}
-      <div className="relative flex-1 md:flex-none md:w-[60%] h-[340px] md:h-full rounded-2xl overflow-hidden shadow-lg bg-gray-100">
-        {/* 지도 컨테이너 */}
-        <div ref={mapRef} className="w-full h-full" />
+      <div className="relative flex-1 md:flex-none md:w-[60%] h-[340px] md:h-full">
+        {/* 지도 컨테이너 (overflow-hidden은 지도 클리핑에만 적용) */}
+        <div className="absolute inset-0 rounded-2xl overflow-hidden shadow-lg bg-gray-100">
+          <div ref={mapRef} className="w-full h-full" />
 
-        {/* SDK 로딩 중 스피너 */}
-        {!sdkLoaded && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-500" />
-            <span className="text-sm text-gray-500">지도 불러오는 중…</span>
-          </div>
-        )}
+          {/* SDK 로딩 중 스피너 */}
+          {!sdkLoaded && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 gap-3">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-500" />
+              <span className="text-sm text-gray-500">지도 불러오는 중…</span>
+            </div>
+          )}
 
-        {/* 색상 범례 */}
-        {sdkLoaded && (
-          <div className="absolute bottom-3 left-3 flex flex-col gap-1 rounded-xl bg-white/90 px-3 py-2 text-[11px] shadow backdrop-blur-sm">
-            {[
-              { dotClass: "bg-[#27AE60]", label: "20분 이내" },
-              { dotClass: "bg-[#F39C12]", label: "20–30분" },
-              { dotClass: "bg-[#95A5A6]", label: "30분 초과" },
-            ].map(({ dotClass, label }) => (
-              <div key={label} className="flex items-center gap-1.5">
-                <span className={`inline-block h-3 w-3 rounded-full ${dotClass}`} />
-                <span className="text-gray-600">{label}</span>
-              </div>
-            ))}
-          </div>
-        )}
+          {/* 색상 범례 */}
+          {sdkLoaded && (
+            <div className="absolute bottom-3 left-3 flex flex-col gap-1 rounded-xl bg-white/90 px-3 py-2 text-[11px] shadow backdrop-blur-sm">
+              {[
+                { dotClass: "bg-[#27AE60]", label: "20분 이내" },
+                { dotClass: "bg-[#F39C12]", label: "20–30분" },
+                { dotClass: "bg-[#95A5A6]", label: "30분 초과" },
+              ].map(({ dotClass, label }) => (
+                <div key={label} className="flex items-center gap-1.5">
+                  <span className={`inline-block h-3 w-3 rounded-full ${dotClass}`} />
+                  <span className="text-gray-600">{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-        {/* 정보 패널 */}
+        {/* 정보 패널 (overflow-hidden 밖에 위치해 클리핑 없음) */}
         {sdkLoaded && activePanel && (
           <InfoPanel
             data={activePanel}

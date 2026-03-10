@@ -60,6 +60,7 @@ const NeighborhoodPage = () => {
 
     trackEvent("neighborhood_detail_viewed", { neighborhood_id: id, company_id: selectedCompany?.id });
 
+    let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
 
@@ -75,6 +76,7 @@ const NeighborhoodPage = () => {
           : Promise.resolve({ data: null, error: null }),
       ]);
 
+      if (cancelled) return;
       if (nbRes.data) {
         setNeighborhood(nbRes.data);
         document.title = `${nbRes.data.name} - 동네 상세 | ComHome`;
@@ -85,6 +87,7 @@ const NeighborhoodPage = () => {
     };
 
     fetchData();
+    return () => { cancelled = true; };
   }, [id, selectedCompany]);
 
   if (loading) {

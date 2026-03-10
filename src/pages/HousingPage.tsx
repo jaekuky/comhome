@@ -33,17 +33,20 @@ const HousingPage = () => {
 
   useEffect(() => {
     if (!neighborhoodId) return;
+    let cancelled = false;
     const loadData = async () => {
       setLoading(true);
       const [listRes, nbRes] = await Promise.all([
         supabase.from("housing_listings").select("*").eq("neighborhood_id", neighborhoodId),
         supabase.from("neighborhoods").select("name").eq("id", neighborhoodId).single(),
       ]);
+      if (cancelled) return;
       if (listRes.data) setListings(listRes.data as Listing[]);
       if (nbRes.data) setNeighborhoodName(nbRes.data.name);
       setLoading(false);
     };
     loadData();
+    return () => { cancelled = true; };
   }, [neighborhoodId]);
 
   const filtered = useMemo(() => {
@@ -58,7 +61,7 @@ const HousingPage = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="mobile-container py-6 space-y-5">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors">
+        <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors">
           <ArrowLeft className="h-4 w-4" />
           뒤로가기
         </button>
@@ -74,6 +77,7 @@ const HousingPage = () => {
             {typeFilters.map((t) => (
               <button
                 key={t}
+                type="button"
                 onClick={() => setTypeFilter(t)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                   typeFilter === t
@@ -138,6 +142,7 @@ const HousingPage = () => {
             {filtered.map((listing) => (
               <button
                 key={listing.id}
+                type="button"
                 onClick={() => setSelectedListing(listing)}
                 className="w-full rounded-xl border border-border bg-card p-4 shadow-card hover:shadow-card-hover transition-all text-left flex gap-4"
               >

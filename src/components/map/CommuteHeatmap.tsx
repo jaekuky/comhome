@@ -223,6 +223,7 @@ export default function CommuteHeatmap({
   const [sdkError, setSdkError] = useState(false);
   const [activePanel, setActivePanel] = useState<PanelData | null>(null);
   const [activeNeighborhoodId, setActiveNeighborhoodId] = useState<string | null>(null);
+  const markerClickedRef = useRef(false);
 
   // Maps SDK는 JavaScript 키가 필요 (REST API 키와 다름)
   const appKey = (import.meta.env.VITE_KAKAO_MAPS_JS_KEY || import.meta.env.VITE_KAKAO_APP_KEY) as string | undefined;
@@ -314,6 +315,7 @@ export default function CommuteHeatmap({
           onNeighborhoodClick(n.id);
           return;
         }
+        markerClickedRef.current = true;
         const panelData: PanelData = {
           name: n.name,
           result,
@@ -336,6 +338,10 @@ export default function CommuteHeatmap({
 
   // ---------- 외부 클릭 → 패널 닫기 ----------
   const handleMapClick = useCallback(() => {
+    if (markerClickedRef.current) {
+      markerClickedRef.current = false;
+      return;
+    }
     setActivePanel(null);
     setActiveNeighborhoodId(null);
   }, []);

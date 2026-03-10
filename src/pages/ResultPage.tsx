@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { type Company } from "@/stores/searchStore";
 import { toast } from "@/hooks/use-toast";
 import { trackEvent } from "@/lib/analytics";
-import { applyRushHourWeight, RUSH_HOUR_MULTIPLIER, calcByOdsay } from "@/lib/commuteService";
+import { applyRushHourWeight, RUSH_HOUR_MULTIPLIER, calcCommuteTime } from "@/lib/commuteService";
 import type { CommuteResult } from "@/lib/commuteService";
 import OnboardingTooltip from "@/components/OnboardingTooltip";
 import NarrativeLoading from "@/components/result/NarrativeLoading";
@@ -123,16 +123,16 @@ const ResultPage = () => {
 
       const rows = data as RawRecommendedRow[];
 
-      // ODsay Edge Function으로 실시간 통근 시간 조회
+      // 로딩 단계에서 calcCommuteTime으로 통근 시간 조회 ('default' → rush hour 가중치 미적용, 클라이언트 재계산)
       let commuteMap = new Map<string, CommuteResult>();
       let odRaw: CommuteResult[] = [];
       if (company.latitude !== null && company.longitude !== null) {
-        const { results: odResults } = await calcByOdsay(
+        odRaw = await calcCommuteTime(
           company,
           rows.map((r) => ({ id: r.neighborhoods.id })),
+          'default',
         );
-        odRaw = odResults;
-        commuteMap = new Map(odResults.map((r) => [r.neighborhoodId, r]));
+        commuteMap = new Map(odRaw.map((r) => [r.neighborhoodId, r]));
       }
 
       const mapped: NeighborhoodResult[] = rows.map((r) => {
@@ -210,17 +210,15 @@ const ResultPage = () => {
         return;
       }
 
-      const { results: odResults, errors } = await calcByOdsay(
+      // 로딩 단계에서 calcCommuteTime으로 통근 시간 조회 ('default' → rush hour 가중치 미적용, 클라이언트 재계산)
+      const odResults = await calcCommuteTime(
         company,
         candidates.map((n) => ({ id: n.id })),
+        'default',
       );
 
       if (odResults.length === 0) {
-        setErrorMessage(
-          errors.length > 0
-            ? "대중교통 경로를 조회할 수 없습니다. 잠시 후 다시 시도해주세요."
-            : "30분 이내 대중교통으로 도달 가능한 동네를 찾지 못했습니다.",
-        );
+        setErrorMessage("대중교통 경로를 조회할 수 없습니다. 잠시 후 다시 시도해주세요.");
         setPhase("error");
         return;
       }

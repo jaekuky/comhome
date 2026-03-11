@@ -1,5 +1,6 @@
 import { TrendingDown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import AnimatedCounter from "@/components/result/AnimatedCounter";
 
 interface CostComparisonTableProps {
   neighborhoodName: string;
@@ -33,17 +34,17 @@ const CostComparisonTable = ({ neighborhoodName, avgRent, savingsAmount }: CostC
         {/* Table */}
         <div className="rounded-xl border border-border overflow-hidden">
           {/* Header */}
-          <div className="grid grid-cols-3 bg-muted text-xs font-medium text-muted-foreground">
-            <div className="p-3">항목</div>
-            <div className="p-3 text-center">서울 평균</div>
-            <div className="p-3 text-center">{neighborhoodName}</div>
+          <div className="grid grid-cols-3 bg-muted text-[11px] font-medium text-muted-foreground">
+            <div className="p-2">항목</div>
+            <div className="p-2 text-center">서울 평균</div>
+            <div className="p-2 text-center truncate">{neighborhoodName}</div>
           </div>
           {/* Rows */}
           {rows.map((row, i) => (
-            <div key={i} className="grid grid-cols-3 border-t border-border text-sm">
-              <div className="p-3 text-xs text-muted-foreground">{row.label}</div>
-              <div className="p-3 text-center text-foreground font-medium">{row.seoul}</div>
-              <div className={`p-3 text-center font-bold ${row.highlight ? "" : "text-foreground"}`}
+            <div key={i} className="grid grid-cols-3 border-t border-border">
+              <div className="p-2 text-[11px] text-muted-foreground leading-tight">{row.label}</div>
+              <div className="p-2 text-center text-[11px] text-foreground font-medium">{row.seoul}</div>
+              <div className={`p-2 text-center text-[11px] font-bold ${row.highlight ? "" : "text-foreground"}`}
                 style={row.highlight ? { color: "hsl(var(--success))" } : undefined}>
                 {row.neighborhood}
               </div>
@@ -51,22 +52,21 @@ const CostComparisonTable = ({ neighborhoodName, avgRent, savingsAmount }: CostC
           ))}
           {/* Savings row */}
           <div className="grid grid-cols-3 border-t-2 border-border bg-muted/50">
-            <div className="p-3 text-xs font-bold text-foreground">월 절감액</div>
-            <div className="p-3 text-center text-muted-foreground">—</div>
-            <div className="p-3 text-center text-lg font-black" style={{ color: "hsl(var(--success))" }}>
-              {monthlySaving > 0 ? `−${monthlySaving}만원` : "동일"}
+            <div className="p-2 text-[11px] font-bold text-foreground">월 절감액</div>
+            <div className="p-2 text-center text-muted-foreground">—</div>
+            <div className="p-2 text-center text-base font-black text-success">
+              {monthlySaving > 0 ? <AnimatedCounter targetValue={monthlySaving} suffix="만원" duration={900} /> : "동일"}
             </div>
           </div>
         </div>
 
         {/* Annual highlight */}
         {annualSaving > 0 && (
-          <div className="mt-4 rounded-xl p-4 text-center" style={{ background: "hsl(var(--success) / 0.08)" }}>
+          <div className="mt-4 rounded-xl p-4 text-center bg-success/[0.08]">
             <p className="text-xs text-muted-foreground mb-1">연간 절감 예상액</p>
-            <p className="text-2xl font-black" style={{ color: "hsl(var(--success))" }}>
-              {annualSaving}만원
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-1">서울 평균 대비 절감 가능 금액</p>
+            <div className="text-2xl font-black text-success">
+              <AnimatedCounter targetValue={annualSaving} suffix="만원" duration={1200} contextText="서울 평균 대비 절감 가능 금액" />
+            </div>
           </div>
         )}
       </CardContent>

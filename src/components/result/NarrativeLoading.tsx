@@ -99,11 +99,11 @@ const NarrativeLoading = ({ companyName, onComplete, isApiReady }: NarrativeLoad
   onCompleteRef.current = onComplete;
   const reducedMotion = usePrefersReducedMotion();
 
-  // Advance steps: 0→1s→2s, mark done at 3s (min 2s of animation guaranteed)
+  // Advance steps: 0→700ms→1400ms, mark done at 2000ms (캐시 히트 시 ~2초)
   useEffect(() => {
-    const t1 = setTimeout(() => setStep(1), 1000);
-    const t2 = setTimeout(() => setStep(2), 2000);
-    const t3 = setTimeout(() => setAnimationDone(true), 3000);
+    const t1 = setTimeout(() => setStep(1), 700);
+    const t2 = setTimeout(() => setStep(2), 1400);
+    const t3 = setTimeout(() => setAnimationDone(true), 2000);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);

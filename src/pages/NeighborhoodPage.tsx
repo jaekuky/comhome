@@ -72,7 +72,7 @@ const NeighborhoodPage = () => {
               .select("*")
               .eq("neighborhood_id", id)
               .eq("company_id", selectedCompany.id)
-              .single()
+              .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
       ]);
 

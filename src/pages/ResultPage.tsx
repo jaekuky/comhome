@@ -161,7 +161,7 @@ const ResultPage = () => {
         return [{ id, name, lat: latitude, lng: longitude }];
       });
 
-      // ODsay 결과가 없으면 정적 데이터 기반으로 CommuteResult 합성
+      // ODsay 결과와 정적 데이터를 merge: ODsay 결과 우선, 누락된 항목은 fallback으로 채움
       const fallbackOd: CommuteResult[] = rows.map((r) => ({
         neighborhoodId: r.neighborhoods.id,
         commuteMinutes: r.commute_minutes,
@@ -171,8 +171,10 @@ const ResultPage = () => {
         totalFare: 0,
         isEstimated: false,
       }));
+      const odMap = new Map(odRaw.map((r) => [r.neighborhoodId, r]));
+      const mergedOd = fallbackOd.map((fb) => odMap.get(fb.neighborhoodId) ?? fb);
 
-      setRawCommuteResults(odRaw.length > 0 ? odRaw : fallbackOd);
+      setRawCommuteResults(mergedOd);
       setHeatmapNeighborhoods(heatNeighborhoods);
       setResults(mapped);
       pendingPhaseRef.current = "results";

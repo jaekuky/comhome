@@ -38,11 +38,11 @@ const SummaryCards = ({ neighborhoodCount, avgCommute, avgSavings }: SummaryCard
   ];
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+    <div className="grid grid-cols-3 gap-3">
       {cards.map((card, i) => (
         <div
           key={i}
-          className="min-w-[130px] flex-1 rounded-2xl bg-card border border-border p-4 shadow-card text-center animate-fade-in animate-counter-blur"
+          className="rounded-2xl bg-card border border-border p-4 shadow-card text-center animate-fade-in animate-counter-blur"
           style={{ animationDelay: `${i * 0.1}s` }}
         >
           <card.icon className={`h-5 w-5 mx-auto mb-2 ${card.color}`} />

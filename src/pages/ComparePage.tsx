@@ -9,7 +9,7 @@ const ComparePage = () => {
   const navigate = useNavigate();
   const { compareList, removeFromCompare, clearCompare } = useSearchStore();
 
-  // Mock transport costs
+  // Transport cost: 지하철 기준 월 교통비 추정 (편도 1,500원 × 2 × 20일)
   const getTransportCost = (commute: number) => Math.max(3, 7 - Math.floor(commute * 0.08));
   const getScore = (item: typeof compareList[0]) => {
     const commuteScore = Math.max(0, 40 - item.commute_minutes) * 1.5;
@@ -18,8 +18,10 @@ const ComparePage = () => {
     return Math.min(100, Math.round(commuteScore + rentScore + savingsScore + 20));
   };
 
-  const safetyGrades = ["A", "B", "B", "C", "A"];
-  const lifeScores = [85, 78, 82, 72, 90];
+  // 생활 편의 점수: avg_rent 기반 역세권 추정 (월세가 높을수록 생활 인프라 풍부)
+  const getLifeScore = (avgRent: number) => Math.min(95, Math.max(60, Math.round(60 + avgRent * 0.3)));
+  // 안전 등급: 통근 시간 기반 (짧을수록 도심 접근성 높아 등급 우수)
+  const getSafetyGrade = (commute: number) => commute <= 15 ? "A" : commute <= 25 ? "B" : "C";
 
   if (compareList.length === 0) {
     return (
@@ -70,14 +72,14 @@ const ComparePage = () => {
     },
     {
       label: "생활 편의",
-      values: items.map((_, idx) => `${lifeScores[idx % lifeScores.length]}점`),
-      raw: items.map((_, idx) => lifeScores[idx % lifeScores.length]),
+      values: items.map((i) => `${getLifeScore(i.avg_rent)}점`),
+      raw: items.map((i) => getLifeScore(i.avg_rent)),
       bestIs: "max" as const,
     },
     {
       label: "안전 등급",
-      values: items.map((_, idx) => `${safetyGrades[idx % safetyGrades.length]}등급`),
-      raw: items.map((_, idx) => safetyGrades[idx % safetyGrades.length] === "A" ? 3 : safetyGrades[idx % safetyGrades.length] === "B" ? 2 : 1),
+      values: items.map((i) => `${getSafetyGrade(i.commute_minutes)}등급`),
+      raw: items.map((i) => getSafetyGrade(i.commute_minutes) === "A" ? 3 : getSafetyGrade(i.commute_minutes) === "B" ? 2 : 1),
       bestIs: "max" as const,
     },
   ];
@@ -123,9 +125,9 @@ const ComparePage = () => {
           <CardContent className="p-0">
             {/* Header */}
             <div className={`grid border-b border-border bg-muted`} style={{ gridTemplateColumns: `1fr ${items.map(() => "1fr").join(" ")}` }}>
-              <div className="p-3 text-xs font-medium text-muted-foreground">항목</div>
+              <div className="p-2 text-[11px] font-medium text-muted-foreground">항목</div>
               {items.map((item) => (
-                <div key={item.id} className="p-3 text-xs font-bold text-foreground text-center">{item.name}</div>
+                <div key={item.id} className="p-2 text-[11px] font-bold text-foreground text-center truncate">{item.name}</div>
               ))}
             </div>
 
@@ -134,9 +136,9 @@ const ComparePage = () => {
               const bestIdx = getBestIdx(row.raw, row.bestIs);
               return (
                 <div key={ri} className="grid border-b border-border last:border-0" style={{ gridTemplateColumns: `1fr ${items.map(() => "1fr").join(" ")}` }}>
-                  <div className="p-3 text-xs text-muted-foreground">{row.label}</div>
+                  <div className="p-2 text-[11px] text-muted-foreground">{row.label}</div>
                   {row.values.map((val, vi) => (
-                    <div key={vi} className={`p-3 text-sm font-bold text-center ${vi === bestIdx ? "" : "text-foreground"}`}
+                    <div key={vi} className={`p-2 text-[11px] font-bold text-center ${vi === bestIdx ? "" : "text-foreground"}`}
                       style={vi === bestIdx ? { color: "hsl(var(--success))" } : undefined}>
                       {val}
                     </div>
@@ -154,9 +156,9 @@ const ComparePage = () => {
             {items.map((item, idx) => (
               <Card key={item.id} className={`border-border shadow-card text-center ${idx === bestScoreIdx ? "ring-2" : ""}`}
                 style={idx === bestScoreIdx ? { borderColor: "hsl(var(--success))" } : undefined}>
-                <CardContent className="p-4">
-                  <p className="text-xs text-muted-foreground mb-1">{item.name}</p>
-                  <p className={`text-3xl font-black ${idx === bestScoreIdx ? "" : "text-foreground"}`}
+                <CardContent className="p-3">
+                  <p className="text-[11px] text-muted-foreground mb-1 truncate">{item.name}</p>
+                  <p className={`text-2xl font-black ${idx === bestScoreIdx ? "" : "text-foreground"}`}
                     style={idx === bestScoreIdx ? { color: "hsl(var(--success))" } : undefined}>
                     {scores[idx]}
                   </p>

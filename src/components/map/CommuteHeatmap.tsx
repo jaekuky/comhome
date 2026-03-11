@@ -69,7 +69,7 @@ function InfoPanel({
 }) {
   return (
     <div
-      className="absolute top-3 right-3 z-10 w-64 rounded-2xl bg-white/95 shadow-xl border border-gray-100 p-4 backdrop-blur-sm"
+      className="absolute top-3 right-3 z-10 w-64 max-w-[80vw] rounded-2xl bg-white/95 shadow-xl border border-gray-100 p-4 backdrop-blur-sm"
       onClick={(e) => e.stopPropagation()}
     >
       {/* 헤더 */}

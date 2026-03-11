@@ -1,5 +1,6 @@
 import { Clock, Train } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import AnimatedCounter from "@/components/result/AnimatedCounter";
 
 interface CommuteTimelineProps {
   companyName: string;
@@ -57,7 +58,7 @@ const CommuteTimeline = ({ companyName, neighborhoodName, commuteMinutes, commut
         <div className="mt-5 grid grid-cols-3 gap-3">
           <div className="rounded-xl bg-muted p-3 text-center">
             <Clock className="h-4 w-4 mx-auto text-primary mb-1" />
-            <p className="text-lg font-bold text-foreground">{commuteMinutes}분</p>
+            <AnimatedCounter targetValue={commuteMinutes} suffix="분" duration={800} />
             <p className="text-[10px] text-muted-foreground">도어투도어</p>
           </div>
           <div className="rounded-xl bg-muted p-3 text-center">

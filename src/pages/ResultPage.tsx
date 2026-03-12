@@ -75,6 +75,7 @@ const ResultPage = () => {
   const [nudgeActive, setNudgeActive] = useState(false);
   const [departureHour, setDepartureHour] = useState<string>('08:00-09:00');
   const [isApiReady, setIsApiReady] = useState(false);
+  const [maxCommute, setMaxCommute] = useState(30);
   const pageLoadTimeRef = useRef<number>(Date.now());
   // Tracks the intended final phase so fetchResults doesn't bypass the loading animation
   const pendingPhaseRef = useRef<"results" | "empty" | "error">("empty");
@@ -93,7 +94,7 @@ const ResultPage = () => {
     }
   }, [company]);
 
-  const fetchResults = useCallback(async () => {
+  const fetchResults = useCallback(async (maxMinutes: number = maxCommute) => {
     if (!company) return;
 
     if (isValidUUID(company.id)) {
@@ -236,7 +237,7 @@ const ResultPage = () => {
 
       const neighborhoodMap = new Map(candidates.map((n) => [n.id, n]));
       const filtered = odResults
-        .filter((r) => r.commuteMinutes <= 30)
+        .filter((r) => r.commuteMinutes <= maxMinutes)
         .sort((a, b) => a.commuteMinutes - b.commuteMinutes)
         .slice(0, 10);
 
@@ -277,7 +278,7 @@ const ResultPage = () => {
       pendingPhaseRef.current = "empty";
       setIsApiReady(true);
     }
-  }, [company]);
+  }, [company, maxCommute]);
 
   useEffect(() => {
     if (company?.id) {
@@ -398,7 +399,7 @@ const ResultPage = () => {
             <div>
               <h1 className="text-xl font-bold text-foreground">{company.name} 추천 동네</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                통근 30분 이내 최적의 동네 {results.length}곳
+                통근 {maxCommute}분 이내 최적의 동네 {results.length}곳
               </p>
             </div>
 
@@ -498,20 +499,27 @@ const ResultPage = () => {
           <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4 animate-fade-in">
             <SearchX className="h-12 w-12 text-muted-foreground" />
             <p className="text-base font-medium text-foreground text-center">
-              30분 이내 추천 동네를 찾지 못했어요
+              {maxCommute}분 이내 추천 동네를 찾지 못했어요
             </p>
-            <p className="text-sm text-muted-foreground text-center">
-              통근 시간을 40분으로 늘려볼까요?
-            </p>
-            <Button
-              variant="hero"
-              size="lg"
-              onClick={() => {
-                toast({ title: "40분 기준으로 재분석 중...", description: "곧 결과를 보여드릴게요" });
-              }}
-            >
-              40분으로 확장해서 다시 찾기
-            </Button>
+            {maxCommute < 40 && (
+              <>
+                <p className="text-sm text-muted-foreground text-center">
+                  통근 시간을 40분으로 늘려볼까요?
+                </p>
+                <Button
+                  variant="hero"
+                  size="lg"
+                  onClick={() => {
+                    setMaxCommute(40);
+                    setIsApiReady(false);
+                    setPhase("loading");
+                    fetchResults(40);
+                  }}
+                >
+                  40분으로 확장해서 다시 찾기
+                </Button>
+              </>
+            )}
           </div>
         )}
 

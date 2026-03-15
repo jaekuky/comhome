@@ -26,6 +26,7 @@ const HousingPage = () => {
   const [listings, setListings] = useState<Listing[]>([]);
   const [neighborhoodName, setNeighborhoodName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [depositRange, setDepositRange] = useState([100, 5000]);
   const [rentRange, setRentRange] = useState([20, 100]);
   const [typeFilter, setTypeFilter] = useState<string>("전체");
@@ -36,14 +37,22 @@ const HousingPage = () => {
     let cancelled = false;
     const loadData = async () => {
       setLoading(true);
-      const [listRes, nbRes] = await Promise.all([
-        supabase.from("housing_listings").select("*").eq("neighborhood_id", neighborhoodId),
-        supabase.from("neighborhoods").select("name").eq("id", neighborhoodId).single(),
-      ]);
-      if (cancelled) return;
-      if (listRes.data) setListings(listRes.data as Listing[]);
-      if (nbRes.data) setNeighborhoodName(nbRes.data.name);
-      setLoading(false);
+      setError(null);
+      try {
+        const [listRes, nbRes] = await Promise.all([
+          supabase.from("housing_listings").select("*").eq("neighborhood_id", neighborhoodId),
+          supabase.from("neighborhoods").select("name").eq("id", neighborhoodId).single(),
+        ]);
+        if (cancelled) return;
+        if (listRes.error) throw listRes.error;
+        if (nbRes.error) throw nbRes.error;
+        if (listRes.data) setListings(listRes.data as Listing[]);
+        if (nbRes.data) setNeighborhoodName(nbRes.data.name);
+      } catch {
+        if (!cancelled) setError("데이터를 불러오는 중 오류가 발생했습니다");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
     loadData();
     return () => { cancelled = true; };
@@ -125,7 +134,12 @@ const HousingPage = () => {
         <p className="text-xs text-muted-foreground">{filtered.length}건의 매물</p>
 
         {/* Listing cards */}
-        {loading ? (
+        {error ? (
+          <div className="py-12 text-center">
+            <p className="text-sm text-destructive">{error}</p>
+            <p className="text-xs text-muted-foreground mt-1">잠시 후 다시 시도해주세요</p>
+          </div>
+        ) : loading ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />

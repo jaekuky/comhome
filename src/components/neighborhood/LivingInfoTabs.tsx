@@ -58,9 +58,10 @@ const LivingInfoTabs = ({ neighborhoodName }: LivingInfoTabsProps) => {
   return (
     <Card className="border-border shadow-card">
       <CardContent className="p-5">
-        <h3 className="text-sm font-bold text-foreground mb-4">
+        <h3 className="text-sm font-bold text-foreground mb-1">
           {neighborhoodName} 생활 정보
         </h3>
+        <p className="text-[10px] text-muted-foreground mb-3">* 참고용 추정 데이터이며, 실제와 다를 수 있습니다</p>
 
         <Tabs defaultValue="transport" className="w-full">
           <TabsList className="w-full">

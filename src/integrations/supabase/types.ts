@@ -127,6 +127,51 @@ export type Database = {
         }
         Relationships: []
       }
+      rent_stats: {
+        Row: {
+          id: number
+          region_code: string
+          dong_name: string
+          housing_type: string
+          base_ym: string
+          avg_rent: number | null
+          median_rent: number | null
+          min_rent: number | null
+          max_rent: number | null
+          avg_deposit: number | null
+          sample_count: number | null
+          collected_at: string | null
+        }
+        Insert: {
+          id?: number
+          region_code: string
+          dong_name: string
+          housing_type: string
+          base_ym: string
+          avg_rent?: number | null
+          median_rent?: number | null
+          min_rent?: number | null
+          max_rent?: number | null
+          avg_deposit?: number | null
+          sample_count?: number | null
+          collected_at?: string | null
+        }
+        Update: {
+          id?: number
+          region_code?: string
+          dong_name?: string
+          housing_type?: string
+          base_ym?: string
+          avg_rent?: number | null
+          median_rent?: number | null
+          min_rent?: number | null
+          max_rent?: number | null
+          avg_deposit?: number | null
+          sample_count?: number | null
+          collected_at?: string | null
+        }
+        Relationships: []
+      }
       recommended_neighborhoods: {
         Row: {
           commute_minutes: number

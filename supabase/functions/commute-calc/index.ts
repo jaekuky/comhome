@@ -14,6 +14,7 @@ interface CommuteResult {
   transferCount: number
   walkMinutes: number
   totalFare: number
+  isEstimated: boolean
 }
 
 interface CacheRow {
@@ -43,6 +44,7 @@ function cacheRowToResult(neighborhoodId: string, row: CacheRow): CommuteResult 
     transferCount: row.transfer_count,
     walkMinutes: row.walk_minutes,
     totalFare: row.total_fare,
+    isEstimated: true,
   }
 }
 
@@ -54,10 +56,10 @@ async function fetchFromOdsay(
   neighborhoodLng: number,
 ): Promise<Omit<CommuteResult, "neighborhoodId">> {
   const url = new URL("https://api.odsay.com/v1/api/searchPubTransPathT")
-  url.searchParams.set("SX", String(companyLng))   // 출발 경도
-  url.searchParams.set("SY", String(companyLat))   // 출발 위도
-  url.searchParams.set("EX", String(neighborhoodLng)) // 도착 경도
-  url.searchParams.set("EY", String(neighborhoodLat)) // 도착 위도
+  url.searchParams.set("SX", String(neighborhoodLng)) // 출발 경도 (집)
+  url.searchParams.set("SY", String(neighborhoodLat)) // 출발 위도 (집)
+  url.searchParams.set("EX", String(companyLng))       // 도착 경도 (회사)
+  url.searchParams.set("EY", String(companyLat))       // 도착 위도 (회사)
   url.searchParams.set("apiKey", apiKey)
 
   const controller = new AbortController()
@@ -102,6 +104,7 @@ async function fetchFromOdsay(
       transferCount,
       walkMinutes,
       totalFare: payment,
+      isEstimated: true,
     }
   } finally {
     clearTimeout(timeout)
@@ -165,7 +168,7 @@ Deno.serve(async (req) => {
   }
 
   const neighborhoodMap = new Map(
-    neighborhoods.map((n) => [n.id as string, n as { id: string; latitude: number; longitude: number }]),
+    neighborhoods.map((n) => [n.id as string, n as { id: string; latitude: number | null; longitude: number | null }]),
   )
 
   const results: CommuteResult[] = []
@@ -175,7 +178,7 @@ Deno.serve(async (req) => {
   const settled = await Promise.allSettled(
     neighborhoodIds.map(async (neighborhoodId) => {
       const nb = neighborhoodMap.get(neighborhoodId)
-      if (!nb?.latitude || !nb?.longitude) {
+      if (nb?.latitude === null || nb?.latitude === undefined || nb?.longitude === null || nb?.longitude === undefined) {
         throw new Error(`동네 ${neighborhoodId} 좌표 없음`)
       }
 

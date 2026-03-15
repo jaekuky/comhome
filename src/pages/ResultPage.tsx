@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Share2, SearchX, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,6 +15,26 @@ import SummaryCards from "@/components/result/SummaryCards";
 import FilterTabs, { type SortMode } from "@/components/result/FilterTabs";
 import NeighborhoodCard, { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
 import CommuteHeatmap, { type Neighborhood as HeatmapNeighborhood } from "@/components/map/CommuteHeatmap";
+
+function companyFromParams(params: URLSearchParams): Company | null {
+  const id = params.get("companyId");
+  const name = params.get("name");
+  const address = params.get("address");
+  const district = params.get("district");
+  if (!id || !name || !address || !district) return null;
+  const lat = params.get("lat");
+  const lng = params.get("lng");
+  const parsedLat = lat ? parseFloat(lat) : NaN;
+  const parsedLng = lng ? parseFloat(lng) : NaN;
+  return {
+    id,
+    name,
+    address,
+    district,
+    latitude: isNaN(parsedLat) ? null : parsedLat,
+    longitude: isNaN(parsedLng) ? null : parsedLng,
+  };
+}
 
 // ---------- 유틸 ----------
 
@@ -64,7 +84,8 @@ interface RawRecommendedRow {
 const ResultPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const company = (location.state as { company?: Company })?.company;
+  const [searchParams] = useSearchParams();
+  const company = (location.state as { company?: Company })?.company ?? companyFromParams(searchParams);
 
   const [phase, setPhase] = useState<"loading" | "results" | "empty" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -135,7 +156,6 @@ const ResultPage = () => {
         odRaw = await calcCommuteTime(
           company,
           rows.map((r) => ({ id: r.neighborhoods.id })),
-          'default',
         );
         commuteMap = new Map(odRaw.map((r) => [r.neighborhoodId, r]));
       }
@@ -225,7 +245,6 @@ const ResultPage = () => {
       const odResults = await calcCommuteTime(
         company,
         candidates.map((n) => ({ id: n.id })),
-        'default',
       );
 
       if (odResults.length === 0) {
@@ -421,7 +440,7 @@ const ResultPage = () => {
                   key={slot}
                   type="button"
                   onClick={() => setDepartureHour(slot)}
-                  aria-pressed={departureHour === slot ? "true" : "false"}
+                  aria-pressed={departureHour === slot}
                   className={[
                     "text-xs px-2.5 py-1 rounded-full border transition-colors",
                     departureHour === slot

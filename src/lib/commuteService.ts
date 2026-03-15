@@ -23,7 +23,9 @@ interface Neighborhood {
   id: string;
 }
 
-const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/commute-calc`;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/commute-calc`;
 
 export const RUSH_HOUR_MULTIPLIER: Record<string, number> = {
   '07:00-08:00': 1.15,    // 혼잡도 15% 추가
@@ -41,8 +43,13 @@ export async function calcByOdsay(
   company: Company,
   neighborhoods: Neighborhood[],
 ): Promise<OdsayServiceResult> {
-  if (!company.latitude || !company.longitude || neighborhoods.length === 0) {
+  if (company.latitude === null || company.longitude === null || neighborhoods.length === 0) {
     return { results: [], fromCache: false, errors: [] };
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.error("[commuteService] VITE_SUPABASE_URL 또는 VITE_SUPABASE_PUBLISHABLE_KEY가 설정되지 않았습니다");
+    return { results: [], fromCache: false, errors: ["Supabase 환경변수 미설정"] };
   }
 
   try {
@@ -50,7 +57,7 @@ export async function calcByOdsay(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
       },
       body: JSON.stringify({
         companyLat: company.latitude,
@@ -96,13 +103,9 @@ export async function calcByOdsay(
 export async function calcCommuteTime(
   company: Company,
   neighborhoods: Neighborhood[],
-  departureHour: string = '08:00-09:00',
 ): Promise<CommuteResult[]> {
   const { results: raw } = await calcByOdsay(company, neighborhoods);
   // MAU 1,000+ 시 calcByOdsay → calcByKakaoMobility로 변경
-  return raw.map((r) => ({
-    ...r,
-    commuteMinutes: applyRushHourWeight(r.commuteMinutes, departureHour),
-    isEstimated: true,
-  }));
+  // 러시아워 가중치는 UI 레이어(ResultPage weightedResults)에서 적용
+  return raw;
 }

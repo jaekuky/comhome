@@ -62,9 +62,9 @@ const CommuteTimeline = ({ companyName, neighborhoodName, commuteMinutes, commut
             <p className="text-[10px] text-muted-foreground">도어투도어</p>
           </div>
           <div className="rounded-xl bg-muted p-3 text-center">
-            <p className="text-xs text-muted-foreground mb-1">첫차</p>
-            <p className="text-sm font-bold text-foreground">05:30</p>
-            <p className="text-[10px] text-muted-foreground">막차 23:40</p>
+            <Train className="h-4 w-4 mx-auto text-primary mb-1" />
+            <p className="text-sm font-bold text-foreground">대중교통</p>
+            <p className="text-[10px] text-muted-foreground">지하철/버스</p>
           </div>
           <div className="rounded-xl bg-muted p-3 text-center">
             <p className="text-xs text-muted-foreground mb-1">혼잡도</p>

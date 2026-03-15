@@ -24,6 +24,12 @@ interface SearchState {
 
 const RECENT_KEY = 'comhome_recent_searches';
 
+function isValidCompany(item: unknown): item is Company {
+  if (typeof item !== 'object' || item === null) return false;
+  const obj = item as Record<string, unknown>;
+  return typeof obj.id === 'string' && typeof obj.name === 'string' && typeof obj.address === 'string' && typeof obj.district === 'string';
+}
+
 export const useSearchStore = create<SearchState>((set, get) => ({
   selectedCompany: null,
   setSelectedCompany: (company) => set({ selectedCompany: company }),
@@ -40,7 +46,11 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     try {
       const stored = localStorage.getItem(RECENT_KEY);
       if (stored) {
-        set({ recentSearches: JSON.parse(stored) });
+        const parsed: unknown = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter(isValidCompany);
+          set({ recentSearches: valid });
+        }
       }
     } catch (_e) { /* localStorage unavailable */ }
   },

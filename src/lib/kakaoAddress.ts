@@ -22,6 +22,7 @@ export function isMetroArea(lat: number, lng: number, addressName: string): bool
 
 async function fetchKakaoAddress(query: string): Promise<KakaoAddressResult[]> {
   const apiKey = import.meta.env.VITE_KAKAO_APP_KEY;
+  if (!apiKey) throw new Error("VITE_KAKAO_APP_KEY 환경변수가 설정되지 않았습니다");
   const res = await fetch(
     `https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(query)}`,
     { headers: { Authorization: `KakaoAK ${apiKey}` } }
@@ -30,21 +31,22 @@ async function fetchKakaoAddress(query: string): Promise<KakaoAddressResult[]> {
   const data = await res.json();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data.documents ?? []).map((doc: any) => {
+  return (data.documents ?? []).flatMap((doc: any) => {
     const lat = parseFloat(doc.y);
     const lng = parseFloat(doc.x);
+    if (isNaN(lat) || isNaN(lng)) return [];
     const region2 =
       doc.address?.region_2depth_name ||
       doc.road_address?.region_2depth_name ||
       "";
-    return {
+    return [{
       id: `kakao-${doc.address_name}`,
       name: doc.address_name,
       address: doc.address_name,
       district: region2,
       latitude: lat,
       longitude: lng,
-    };
+    }];
   });
 }
 

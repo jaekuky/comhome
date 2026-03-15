@@ -65,7 +65,8 @@ const SearchPage = () => {
     supabase
       .from("recommended_neighborhoods")
       .select("*", { count: "exact", head: true })
-      .then(({ count }) => {
+      .then(({ count, error: err }) => {
+        if (err) { console.error("동네 수 조회 실패:", err.message); return; }
         if (count !== null) setNeighborhoodCount(count);
       });
   }, []);
@@ -121,11 +122,13 @@ const SearchPage = () => {
     setError(null);
 
     try {
+      // PostgREST 필터 구문 특수문자 이스케이프 (., 콤마, 괄호 등)
+      const sanitized = searchQuery.replace(/[.,()%_\\]/g, "");
       const [supabaseResult, kakaoResult] = await Promise.allSettled([
         supabase
           .from("companies")
           .select("*")
-          .or(`name.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%`)
+          .or(`name.ilike.%${sanitized}%,address.ilike.%${sanitized}%`)
           .limit(5),
         searchKakaoAddress(searchQuery),
       ]);
@@ -232,7 +235,7 @@ const SearchPage = () => {
       });
     }
     incrementAnalysisCount();
-    navigate("/result", { state: { company: selectedCompany } });
+    navigate(`/result?companyId=${encodeURIComponent(selectedCompany.id)}&name=${encodeURIComponent(selectedCompany.name)}&address=${encodeURIComponent(selectedCompany.address)}&district=${encodeURIComponent(selectedCompany.district)}${selectedCompany.latitude != null ? `&lat=${selectedCompany.latitude}` : ""}${selectedCompany.longitude != null ? `&lng=${selectedCompany.longitude}` : ""}`);
   };
 
   const handleQuickAccess = async (areaName: string) => {
@@ -244,10 +247,11 @@ const SearchPage = () => {
     setLoading(true);
     setError(null);
     try {
+      const sanitizedArea = areaName.replace(/[.,()%_\\]/g, "");
       const { data, error: dbError } = await supabase
         .from("companies")
         .select("*")
-        .or(`name.ilike.%${areaName}%,address.ilike.%${areaName}%`)
+        .or(`name.ilike.%${sanitizedArea}%,address.ilike.%${sanitizedArea}%`)
         .limit(1);
 
       if (dbError) throw dbError;
@@ -277,7 +281,7 @@ const SearchPage = () => {
           });
         }
         incrementAnalysisCount();
-        navigate("/result", { state: { company } });
+        navigate(`/result?companyId=${encodeURIComponent(company.id)}&name=${encodeURIComponent(company.name)}&address=${encodeURIComponent(company.address)}&district=${encodeURIComponent(company.district)}${company.latitude != null ? `&lat=${company.latitude}` : ""}${company.longitude != null ? `&lng=${company.longitude}` : ""}`);
       } else {
         // No match — show dropdown so user can search manually
         setResults([]);
@@ -408,14 +412,11 @@ const SearchPage = () => {
           {/* Autocomplete dropdown */}
           {showDropdown && (
             <div
-              id="company-listbox"
-              role="listbox"
-              aria-label="검색 결과"
               className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 rounded-xl border border-border bg-card shadow-card-hover overflow-hidden animate-fade-up"
             >
               {loading && (
-                <div className="flex items-center justify-center py-6" role="status" aria-label="검색 중">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <div className="flex items-center justify-center py-6">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" role="status" aria-label="검색 중" />
                 </div>
               )}
 
@@ -424,6 +425,7 @@ const SearchPage = () => {
                   <AlertCircle className="h-8 w-8 text-destructive mx-auto" />
                   <p className="text-sm text-foreground">일시적인 오류가 발생했습니다</p>
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => searchCompanies(query)}
@@ -440,6 +442,7 @@ const SearchPage = () => {
                     결과가 없습니다. 정확한 주소를 입력해주세요
                   </p>
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => {
@@ -461,44 +464,48 @@ const SearchPage = () => {
                 </div>
               )}
 
-              {!loading && !error && results.map((company, idx) => (
-                <button
-                  key={company.id}
-                  id={`company-option-${idx}`}
-                  role="option"
-                  aria-selected={idx === activeIndex}
-                  onClick={() => handleSelectCompany(company)}
-                  className={`flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors border-b border-border last:border-b-0 ${
-                    idx === activeIndex ? "bg-muted/50" : ""
-                  }`}
-                >
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                    company.source === "company" ? "bg-primary/10" : "bg-muted"
-                  }`}>
-                    {company.source === "company"
-                      ? <Building2 className="h-4 w-4 text-primary" />
-                      : <MapPin className="h-4 w-4 text-muted-foreground" />
-                    }
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-foreground truncate">
-                        {company.name}
-                      </p>
-                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                        company.source === "company"
-                          ? "bg-primary/10 text-primary"
-                          : "bg-muted text-muted-foreground"
+              {!loading && !error && results.length > 0 && (
+                <div id="company-listbox" role="listbox" aria-label="검색 결과">
+                  {results.map((company, idx) => (
+                    <button
+                      key={company.id}
+                      id={`company-option-${idx}`}
+                      role="option"
+                      aria-selected={idx === activeIndex}
+                      onClick={() => handleSelectCompany(company)}
+                      className={`flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors border-b border-border last:border-b-0 ${
+                        idx === activeIndex ? "bg-muted/50" : ""
+                      }`}
+                    >
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                        company.source === "company" ? "bg-primary/10" : "bg-muted"
                       }`}>
-                        {company.source === "company" ? "회사" : "주소"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {company.address}
-                    </p>
-                  </div>
-                </button>
-              ))}
+                        {company.source === "company"
+                          ? <Building2 className="h-4 w-4 text-primary" />
+                          : <MapPin className="h-4 w-4 text-muted-foreground" />
+                        }
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-foreground truncate">
+                            {company.name}
+                          </p>
+                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                            company.source === "company"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-muted text-muted-foreground"
+                          }`}>
+                            {company.source === "company" ? "회사" : "주소"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {company.address}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

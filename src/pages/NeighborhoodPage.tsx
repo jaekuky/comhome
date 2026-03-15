@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Eye } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { type Tables } from "@/integrations/supabase/types";
@@ -24,26 +25,12 @@ interface HousingListing {
   description: string | null;
 }
 
-const ScarcityCounter = () => {
-  const [count, setCount] = useState(() => 40 + Math.floor(Math.random() * 20));
-
-  useEffect(() => {
-    const tick = () => {
-      setCount((c) => c + 1);
-      const next = (30 + Math.random() * 30) * 1000;
-      timer = setTimeout(tick, next);
-    };
-    let timer = setTimeout(tick, (30 + Math.random() * 30) * 1000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <Eye className="h-3.5 w-3.5 inline-touch-target" />
-      <span>이 동네를 본 사람: 오늘 <strong className="text-foreground">{count}명</strong></span>
-    </div>
-  );
-};
+const PopularBadge = () => (
+  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <Eye className="h-3.5 w-3.5 inline-touch-target" />
+    <span>많은 직장인이 관심을 가지는 동네입니다</span>
+  </div>
+);
 
 const NeighborhoodPage = () => {
   const { id } = useParams();
@@ -53,37 +40,67 @@ const NeighborhoodPage = () => {
   const [neighborhood, setNeighborhood] = useState<Tables<"neighborhoods"> | null>(null);
   const [recommendation, setRecommendation] = useState<Tables<"recommended_neighborhoods"> | null>(null);
   const [listings, setListings] = useState<HousingListing[]>([]);
+  const [rentStats, setRentStats] = useState<Tables<"rent_stats">[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || id.trim() === "") return;
 
     trackEvent("neighborhood_detail_viewed", { neighborhood_id: id, company_id: selectedCompany?.id });
 
     let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
+      setError(null);
 
-      const [nbRes, listRes, recRes] = await Promise.all([
-        supabase.from("neighborhoods").select("*").eq("id", id).single(),
-        supabase.from("housing_listings").select("*").eq("neighborhood_id", id).limit(10),
-        selectedCompany
-          ? supabase.from("recommended_neighborhoods")
+      try {
+        const isValidUUID = (str: string) =>
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
+        const [nbRes, listRes, recRes] = await Promise.all([
+          supabase.from("neighborhoods").select("*").eq("id", id).single(),
+          supabase.from("housing_listings").select("*").eq("neighborhood_id", id).limit(10),
+          selectedCompany && isValidUUID(selectedCompany.id)
+            ? supabase.from("recommended_neighborhoods")
+                .select("*")
+                .eq("neighborhood_id", id)
+                .eq("company_id", selectedCompany.id)
+                .maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+        ]);
+
+        if (cancelled) return;
+        if (nbRes.error) throw nbRes.error;
+        if (nbRes.data) {
+          setNeighborhood(nbRes.data);
+          document.title = `${nbRes.data.name} - 동네 상세 | ComHome`;
+        }
+        if (listRes.data) setListings(listRes.data as HousingListing[]);
+        if (recRes.data) setRecommendation(recRes.data);
+
+        // housing_listings가 비어있으면 rent_stats 폴백 조회
+        if (!listRes.data || listRes.data.length === 0) {
+          const dongName = nbRes.data?.name;
+          if (dongName) {
+            const { data: statsData } = await supabase
+              .from("rent_stats")
               .select("*")
-              .eq("neighborhood_id", id)
-              .eq("company_id", selectedCompany.id)
-              .maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
-      ]);
-
-      if (cancelled) return;
-      if (nbRes.data) {
-        setNeighborhood(nbRes.data);
-        document.title = `${nbRes.data.name} - 동네 상세 | ComHome`;
+              .eq("dong_name", dongName)
+              .order("base_ym", { ascending: false })
+              .limit(10);
+            if (!cancelled && statsData && statsData.length > 0) {
+              // 가장 최신 base_ym의 데이터만 사용
+              const latestYm = statsData[0].base_ym;
+              setRentStats(statsData.filter((s) => s.base_ym === latestYm));
+            }
+          }
+        }
+      } catch {
+        if (!cancelled) setError("데이터를 불러오는 중 오류가 발생했습니다");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      if (listRes.data) setListings(listRes.data as HousingListing[]);
-      if (recRes.data) setRecommendation(recRes.data);
-      setLoading(false);
     };
 
     fetchData();
@@ -94,6 +111,17 @@ const NeighborhoodPage = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">불러오는 중...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <p className="text-muted-foreground">{error}</p>
+          <Button variant="outline" onClick={() => navigate(-1)}>뒤로가기</Button>
+        </div>
       </div>
     );
   }
@@ -146,7 +174,7 @@ const NeighborhoodPage = () => {
           </div>
           {/* Scarcity counter */}
           <div className="mt-3">
-            <ScarcityCounter />
+            <PopularBadge />
           </div>
         </div>
 
@@ -177,6 +205,8 @@ const NeighborhoodPage = () => {
           neighborhoodId={neighborhood.id}
           neighborhoodName={neighborhood.name}
           listings={listings}
+          rentStats={rentStats}
+          loading={loading}
         />
       </div>
 

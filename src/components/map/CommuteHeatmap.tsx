@@ -234,7 +234,11 @@ export default function CommuteHeatmap({
 
   // ---------- SDK 로딩 ----------
   useEffect(() => {
-    if (!appKey) { setSdkError(true); return; }
+    if (!appKey) {
+      console.error("Kakao Maps SDK 키가 설정되지 않았습니다. VITE_KAKAO_MAPS_JS_KEY 또는 VITE_KAKAO_APP_KEY 환경변수를 확인해주세요.");
+      setSdkError(true);
+      return;
+    }
     loadKakaoSdk(appKey)
       .then(() => setSdkLoaded(true))
       .catch(() => setSdkError(true));

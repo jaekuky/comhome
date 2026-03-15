@@ -35,8 +35,8 @@ const ComparePage = () => {
             <BarChart3 className="h-12 w-12 text-muted-foreground" />
             <p className="text-base font-medium text-foreground">비교할 동네가 없어요</p>
             <p className="text-sm text-muted-foreground text-center">결과 페이지에서 동네를 선택해주세요</p>
-            <Button variant="hero" size="lg" onClick={() => navigate("/result")}>
-              결과 페이지로 이동
+            <Button variant="hero" size="lg" onClick={() => navigate("/search")}>
+              회사 검색하기
             </Button>
           </div>
         </div>
@@ -85,13 +85,14 @@ const ComparePage = () => {
   ];
 
   const getBestIdx = (raw: number[], bestIs: "min" | "max") => {
+    if (raw.length === 0) return -1;
     const fn = bestIs === "min" ? Math.min : Math.max;
     const best = fn(...raw);
     return raw.indexOf(best);
   };
 
   const scores = items.map((item) => getScore(item));
-  const bestScoreIdx = scores.indexOf(Math.max(...scores));
+  const bestScoreIdx = scores.length > 0 ? scores.indexOf(Math.max(...scores)) : -1;
 
   return (
     <div className="min-h-screen bg-background">

@@ -46,7 +46,7 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/search" element={<SearchPage />} />
-                <Route path="/result" element={<ResultPage />} />
+                <Route path="/result" element={<ErrorBoundary><ResultPage /></ErrorBoundary>} />
                 <Route path="/neighborhood/:id" element={<NeighborhoodPage />} />
                 <Route path="/compare" element={<ComparePage />} />
                 <Route path="/housing/:neighborhoodId" element={<HousingPage />} />

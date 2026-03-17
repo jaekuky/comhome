@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,15 @@ import { type Tables } from "@/integrations/supabase/types";
 import { useSearchStore } from "@/stores/searchStore";
 import { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
 import { trackEvent } from "@/lib/analytics";
+import { toNeighborhoodCost, fareToMonthly } from "@/lib/costUtils";
 import CommuteTimeline from "@/components/neighborhood/CommuteTimeline";
 import CostComparisonTable from "@/components/neighborhood/CostComparisonTable";
 import LivingInfoTabs from "@/components/neighborhood/LivingInfoTabs";
 import HousingPreview from "@/components/neighborhood/HousingPreview";
 import BottomCTA from "@/components/neighborhood/BottomCTA";
+import CostInputForm from "@/components/cost/CostInputForm";
+import CostComparisonCards from "@/components/cost/CostComparisonCards";
+import InsightCopy from "@/components/cost/InsightCopy";
 
 interface HousingListing {
   id: string;
@@ -35,7 +39,7 @@ const PopularBadge = () => (
 const NeighborhoodPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { selectedCompany } = useSearchStore();
+  const { selectedCompany, commuteResults } = useSearchStore();
 
   const [neighborhood, setNeighborhood] = useState<Tables<"neighborhoods"> | null>(null);
   const [recommendation, setRecommendation] = useState<Tables<"recommended_neighborhoods"> | null>(null);
@@ -43,6 +47,28 @@ const NeighborhoodPage = () => {
   const [rentStats, setRentStats] = useState<Tables<"rent_stats">[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 비용 분석 입력 상태
+  const [currentRent, setCurrentRent] = useState(50);
+  const [transportCost, setTransportCost] = useState(7);
+  const [income, setIncome] = useState(0);
+
+  // commute_cache totalFare 기반 교통비 자동 세팅
+  useEffect(() => {
+    if (!id) return;
+    const match = commuteResults.find((r) => r.neighborhoodId === id);
+    if (match && match.totalFare > 0) {
+      setTransportCost(fareToMonthly(match.totalFare));
+    }
+  }, [id, commuteResults]);
+
+  // NeighborhoodCost 변환 (단일 동네)
+  const neighborhoodCosts = useMemo(() => {
+    if (!neighborhood) return [];
+    const commute = commuteResults.find((r) => r.neighborhoodId === neighborhood.id);
+    const medianRent = rentStats.find((s) => s.housing_type === "mixed")?.median_rent ?? null;
+    return [toNeighborhoodCost(neighborhood, commute, medianRent)];
+  }, [neighborhood, commuteResults, rentStats]);
 
   useEffect(() => {
     if (!id || id.trim() === "") return;
@@ -194,6 +220,33 @@ const NeighborhoodPage = () => {
           avgRent={neighborhood.avg_rent}
           savingsAmount={recommendation?.savings_amount ?? 0}
         />
+
+        {/* 비용 손익 분석 */}
+        <div className="space-y-4 border-t border-border pt-6">
+          <h2 className="text-lg font-bold text-foreground">비용 손익 분석</h2>
+
+          <CostInputForm
+            currentRent={currentRent}
+            transportCost={transportCost}
+            income={income}
+            onCurrentRentChange={setCurrentRent}
+            onTransportCostChange={setTransportCost}
+            onIncomeChange={setIncome}
+          />
+
+          <CostComparisonCards
+            neighborhoods={neighborhoodCosts}
+            currentRent={currentRent}
+            currentTransportCost={transportCost}
+            income={income}
+          />
+
+          <InsightCopy
+            neighborhoods={neighborhoodCosts}
+            currentRent={currentRent}
+            currentTransportCost={transportCost}
+          />
+        </div>
 
         {/* Living Info */}
         <LivingInfoTabs

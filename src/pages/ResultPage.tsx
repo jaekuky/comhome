@@ -3,7 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Share2, SearchX, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { type Company } from "@/stores/searchStore";
+import { type Company, useSearchStore } from "@/stores/searchStore";
 import { toast } from "@/hooks/use-toast";
 import { trackEvent } from "@/lib/analytics";
 import { applyRushHourWeight, RUSH_HOUR_MULTIPLIER, calcCommuteTime } from "@/lib/commuteService";
@@ -86,6 +86,7 @@ const ResultPage = () => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const company = (location.state as { company?: Company })?.company ?? companyFromParams(searchParams);
+  const { setCommuteResults } = useSearchStore();
 
   const [phase, setPhase] = useState<"loading" | "results" | "empty" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -114,6 +115,13 @@ const ResultPage = () => {
       document.title = `${company.name} 추천 동네 | ComHome`;
     }
   }, [company]);
+
+  // commuteResults를 store에 동기화하여 다른 페이지에서 접근 가능하게 함
+  useEffect(() => {
+    if (rawCommuteResults.length > 0) {
+      setCommuteResults(rawCommuteResults);
+    }
+  }, [rawCommuteResults, setCommuteResults]);
 
   const fetchResults = useCallback(async (maxMinutes: number = maxCommute) => {
     if (!company) return;

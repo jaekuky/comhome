@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { type NeighborhoodResult } from '@/components/result/NeighborhoodCard';
+import { type CommuteResult } from '@/lib/commuteService';
 
 export interface Company {
   id: string;
@@ -20,6 +21,8 @@ interface SearchState {
   addToCompare: (item: NeighborhoodResult) => boolean;
   removeFromCompare: (id: string) => void;
   clearCompare: () => void;
+  commuteResults: CommuteResult[];
+  setCommuteResults: (results: CommuteResult[]) => void;
 }
 
 const RECENT_KEY = 'comhome_recent_searches';
@@ -66,4 +69,6 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     set({ compareList: get().compareList.filter((c) => c.id !== id) });
   },
   clearCompare: () => set({ compareList: [] }),
+  commuteResults: [],
+  setCommuteResults: (results) => set({ commuteResults: results }),
 }));

@@ -39,6 +39,34 @@ export function applyRushHourWeight(commuteMinutes: number, departureHour: strin
   return Math.round(commuteMinutes * multiplier);
 }
 
+const BATCH_SIZE = 5;
+
+async function fetchBatch(
+  companyLat: number,
+  companyLng: number,
+  neighborhoodIds: string[],
+): Promise<OdsayServiceResult> {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify({ companyLat, companyLng, neighborhoodIds }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`commute-calc Edge Function 오류: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return {
+    results: (data.results ?? []) as CommuteResult[],
+    fromCache: data.fromCache ?? false,
+    errors: data.errors ?? [],
+  };
+}
+
 export async function calcByOdsay(
   company: Company,
   neighborhoods: Neighborhood[],
@@ -52,38 +80,30 @@ export async function calcByOdsay(
     return { results: [], fromCache: false, errors: ["Supabase 환경변수 미설정"] };
   }
 
-  try {
-    const res = await fetch(EDGE_FUNCTION_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${SUPABASE_KEY}`,
-      },
-      body: JSON.stringify({
-        companyLat: company.latitude,
-        companyLng: company.longitude,
-        neighborhoodIds: neighborhoods.map((n) => n.id),
-      }),
-    });
+  const allIds = neighborhoods.map((n) => n.id);
+  const allResults: CommuteResult[] = [];
+  const allErrors: string[] = [];
+  let allFromCache = true;
 
-    if (!res.ok) {
-      throw new Error(`commute-calc Edge Function 오류: ${res.status}`);
+  // 5개씩 배치로 분할하여 순차 호출
+  for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
+    const batchIds = allIds.slice(i, i + BATCH_SIZE);
+    try {
+      const batch = await fetchBatch(
+        company.latitude,
+        company.longitude,
+        batchIds,
+      );
+      allResults.push(...batch.results);
+      allErrors.push(...batch.errors);
+      if (!batch.fromCache) allFromCache = false;
+    } catch (err) {
+      console.error(`[commuteService] 배치 ${i / BATCH_SIZE + 1} 실패:`, err);
+      allErrors.push(err instanceof Error ? err.message : "알 수 없는 오류");
     }
-
-    const data = await res.json();
-    return {
-      results: (data.results ?? []) as CommuteResult[],
-      fromCache: data.fromCache ?? false,
-      errors: data.errors ?? [],
-    };
-  } catch (err) {
-    console.error("[commuteService] calcByOdsay 실패:", err);
-    return {
-      results: [],
-      fromCache: false,
-      errors: [err instanceof Error ? err.message : "알 수 없는 오류"],
-    };
   }
+
+  return { results: allResults, fromCache: allFromCache, errors: allErrors };
 }
 
 // async function calcByKakaoMobility(

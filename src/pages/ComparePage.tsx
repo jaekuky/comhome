@@ -1,15 +1,78 @@
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, X, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useSearchStore } from "@/stores/searchStore";
+import { supabase } from "@/integrations/supabase/client";
+import { toNeighborhoodCost, fareToMonthly } from "@/lib/costUtils";
+import CostInputForm from "@/components/cost/CostInputForm";
+import CostComparisonCards from "@/components/cost/CostComparisonCards";
+import InsightCopy from "@/components/cost/InsightCopy";
 
 const ComparePage = () => {
   const navigate = useNavigate();
-  const { compareList, removeFromCompare, clearCompare } = useSearchStore();
+  const { compareList, removeFromCompare, clearCompare, commuteResults } = useSearchStore();
 
-  // Transport cost: 지하철 기준 월 교통비 추정 (편도 1,500원 × 2 × 20일)
+  // 비용 분석 입력 상태
+  const [currentRent, setCurrentRent] = useState(50);
+  const [transportCost, setTransportCost] = useState(7);
+  const [income, setIncome] = useState(0);
+
+  // rent_stats median_rent 조회 결과
+  const [medianRents, setMedianRents] = useState<Record<string, number>>({});
+
+  // commute_cache의 totalFare 기반 교통비 자동 세팅
+  useEffect(() => {
+    if (commuteResults.length > 0) {
+      const avgFare =
+        commuteResults.reduce((sum, r) => sum + r.totalFare, 0) / commuteResults.length;
+      if (avgFare > 0) {
+        setTransportCost(fareToMonthly(avgFare));
+      }
+    }
+  }, [commuteResults]);
+
+  // compareList 동네들의 rent_stats median_rent 조회
+  useEffect(() => {
+    if (compareList.length === 0) return;
+    let cancelled = false;
+
+    const fetchRentStats = async () => {
+      const names = compareList.map((item) => item.name);
+      const { data } = await supabase
+        .from("rent_stats")
+        .select("dong_name, median_rent, base_ym")
+        .in("dong_name", names)
+        .eq("housing_type", "mixed")
+        .order("base_ym", { ascending: false });
+
+      if (cancelled || !data) return;
+
+      // 각 동네별 가장 최신 base_ym의 median_rent만 사용
+      const result: Record<string, number> = {};
+      for (const row of data) {
+        if (!result[row.dong_name] && row.median_rent !== null) {
+          result[row.dong_name] = row.median_rent;
+        }
+      }
+      setMedianRents(result);
+    };
+
+    fetchRentStats();
+    return () => { cancelled = true; };
+  }, [compareList]);
+
+  // NeighborhoodCost 변환
+  const neighborhoodCosts = useMemo(() => {
+    const commuteMap = new Map(commuteResults.map((r) => [r.neighborhoodId, r]));
+    return compareList.map((item) =>
+      toNeighborhoodCost(item, commuteMap.get(item.id), medianRents[item.name] ?? null),
+    );
+  }, [compareList, commuteResults, medianRents]);
+
+  // 기존 비교 로직
   const getTransportCost = (commute: number) => Math.max(3, 7 - Math.floor(commute * 0.08));
   const getScore = (item: typeof compareList[0]) => {
     const commuteScore = Math.max(0, 40 - item.commute_minutes) * 1.5;
@@ -17,10 +80,7 @@ const ComparePage = () => {
     const savingsScore = item.savings_amount * 0.5;
     return Math.min(100, Math.round(commuteScore + rentScore + savingsScore + 20));
   };
-
-  // 생활 편의 점수: avg_rent 기반 역세권 추정 (월세가 높을수록 생활 인프라 풍부)
   const getLifeScore = (avgRent: number) => Math.min(95, Math.max(60, Math.round(60 + avgRent * 0.3)));
-  // 안전 등급: 통근 시간 기반 (짧을수록 도심 접근성 높아 등급 우수)
   const getSafetyGrade = (commute: number) => commute <= 15 ? "A" : commute <= 25 ? "B" : "C";
 
   if (compareList.length === 0) {
@@ -173,6 +233,33 @@ const ComparePage = () => {
               </Card>
             ))}
           </div>
+        </div>
+
+        {/* 비용 손익 분석 */}
+        <div className="space-y-4 border-t border-border pt-6">
+          <h2 className="text-lg font-bold text-foreground">비용 손익 분석</h2>
+
+          <CostInputForm
+            currentRent={currentRent}
+            transportCost={transportCost}
+            income={income}
+            onCurrentRentChange={setCurrentRent}
+            onTransportCostChange={setTransportCost}
+            onIncomeChange={setIncome}
+          />
+
+          <CostComparisonCards
+            neighborhoods={neighborhoodCosts}
+            currentRent={currentRent}
+            currentTransportCost={transportCost}
+            income={income}
+          />
+
+          <InsightCopy
+            neighborhoods={neighborhoodCosts}
+            currentRent={currentRent}
+            currentTransportCost={transportCost}
+          />
         </div>
       </div>
     </div>

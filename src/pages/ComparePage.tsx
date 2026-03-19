@@ -7,13 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { useSearchStore } from "@/stores/searchStore";
 import { supabase } from "@/integrations/supabase/client";
 import { toNeighborhoodCost, fareToMonthly } from "@/lib/costUtils";
+import { calcCommuteTime, type CommuteResult } from "@/lib/commuteService";
 import CostInputForm from "@/components/cost/CostInputForm";
 import CostComparisonCards from "@/components/cost/CostComparisonCards";
 import InsightCopy from "@/components/cost/InsightCopy";
 
 const ComparePage = () => {
   const navigate = useNavigate();
-  const { compareList, removeFromCompare, clearCompare, commuteResults } = useSearchStore();
+  const { compareList, removeFromCompare, clearCompare, commuteResults, selectedCompany } = useSearchStore();
 
   // 비용 분석 입력 상태
   const [currentRent, setCurrentRent] = useState(50);
@@ -23,16 +24,45 @@ const ComparePage = () => {
   // rent_stats median_rent 조회 결과
   const [medianRents, setMedianRents] = useState<Record<string, number>>({});
 
+  // store에 없는 동네의 commuteResult를 on-demand fetch
+  const [localCommutes, setLocalCommutes] = useState<CommuteResult[]>([]);
+
+  useEffect(() => {
+    if (compareList.length === 0) return;
+
+    const missingIds = compareList
+      .filter((item) => !commuteResults.some((r) => r.neighborhoodId === item.id))
+      .map((item) => ({ id: item.id }));
+
+    if (missingIds.length === 0) return;
+    if (!selectedCompany?.latitude || !selectedCompany?.longitude) return;
+
+    let cancelled = false;
+    calcCommuteTime(selectedCompany, missingIds).then((results) => {
+      if (!cancelled) setLocalCommutes(results);
+    });
+    return () => { cancelled = true; };
+  }, [compareList, commuteResults, selectedCompany]);
+
+  // store + on-demand fetch 결과를 합산
+  const mergedCommutes = useMemo(() => {
+    const map = new Map(commuteResults.map((r) => [r.neighborhoodId, r]));
+    for (const r of localCommutes) {
+      if (!map.has(r.neighborhoodId)) map.set(r.neighborhoodId, r);
+    }
+    return map;
+  }, [commuteResults, localCommutes]);
+
   // commute_cache의 totalFare 기반 교통비 자동 세팅
   useEffect(() => {
-    if (commuteResults.length > 0) {
-      const avgFare =
-        commuteResults.reduce((sum, r) => sum + r.totalFare, 0) / commuteResults.length;
-      if (avgFare > 0) {
-        setTransportCost(fareToMonthly(avgFare));
-      }
+    const relevant = compareList
+      .map((item) => mergedCommutes.get(item.id))
+      .filter((r): r is CommuteResult => r !== undefined && r.totalFare > 0);
+    if (relevant.length > 0) {
+      const avgFare = relevant.reduce((sum, r) => sum + r.totalFare, 0) / relevant.length;
+      setTransportCost(fareToMonthly(avgFare));
     }
-  }, [commuteResults]);
+  }, [compareList, mergedCommutes]);
 
   // compareList 동네들의 rent_stats median_rent 조회
   useEffect(() => {
@@ -66,11 +96,10 @@ const ComparePage = () => {
 
   // NeighborhoodCost 변환
   const neighborhoodCosts = useMemo(() => {
-    const commuteMap = new Map(commuteResults.map((r) => [r.neighborhoodId, r]));
     return compareList.map((item) =>
-      toNeighborhoodCost(item, commuteMap.get(item.id), medianRents[item.name] ?? null),
+      toNeighborhoodCost(item, mergedCommutes.get(item.id), medianRents[item.name] ?? null),
     );
-  }, [compareList, commuteResults, medianRents]);
+  }, [compareList, mergedCommutes, medianRents]);
 
   // 기존 비교 로직
   const getTransportCost = (commute: number) => Math.max(3, 7 - Math.floor(commute * 0.08));

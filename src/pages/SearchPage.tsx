@@ -41,6 +41,7 @@ const SearchPage = () => {
   const [typedText, setTypedText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const searchIdRef = useRef(0);
   const mountTimeRef = useRef<number>(Date.now());
   const hasFocusedRef = useRef(false);
   const attemptCountRef = useRef(0);
@@ -120,38 +121,69 @@ const SearchPage = () => {
 
     setLoading(true);
     setError(null);
+    const currentSearchId = ++searchIdRef.current;
 
     try {
       // PostgREST 필터 구문 특수문자 이스케이프 (., 콤마, 괄호 등)
       const sanitized = searchQuery.replace(/[.,()%_\\]/g, "");
-      const [supabaseResult, kakaoResult] = await Promise.allSettled([
-        supabase
-          .from("companies")
-          .select("*")
-          .or(`name.ilike.%${sanitized}%,address.ilike.%${sanitized}%`)
-          .limit(5),
-        searchKakaoAddress(searchQuery),
-      ]);
 
-      const companyResults: SearchResult[] =
-        supabaseResult.status === "fulfilled" && supabaseResult.value.data
-          ? (supabaseResult.value.data as Company[]).map((c) => ({ ...c, source: "company" as const }))
-          : [];
+      // 1) Supabase 먼저 조회 → 결과 즉시 표시
+      const supabaseResult = await supabase
+        .from("companies")
+        .select("*")
+        .or(`name.ilike.%${sanitized}%,address.ilike.%${sanitized}%`)
+        .limit(5);
 
-      const addressResults: SearchResult[] =
-        kakaoResult.status === "fulfilled"
-          ? kakaoResult.value.map((a) => ({ ...a, source: "address" as const }))
-          : [];
+      if (currentSearchId !== searchIdRef.current) return;
 
-      if (supabaseResult.status === "rejected") {
-        const message =
-          supabaseResult.reason instanceof Error ? supabaseResult.reason.message : "";
+      if (supabaseResult.error) {
+        const message = supabaseResult.error.message ?? "";
         setError(message.includes("fetch") || message.includes("network") ? "network" : "unknown");
         setResults([]);
+        setLoading(false);
         return;
       }
 
-      setResults([...companyResults, ...addressResults]);
+      const companyResults: SearchResult[] = (supabaseResult.data as Company[]).map((c) => ({
+        ...c,
+        source: "company" as const,
+      }));
+
+      // Supabase 결과가 있으면 즉시 표시하고 로딩 해제
+      if (companyResults.length > 0) {
+        setResults(companyResults);
+        setLoading(false);
+
+        // 2) Kakao 결과는 백그라운드로 추가 (실패해도 무시)
+        searchKakaoAddress(searchQuery)
+          .then((kakaoResults) => {
+            if (currentSearchId !== searchIdRef.current) return;
+            const addressResults: SearchResult[] = kakaoResults.map((a) => ({
+              ...a,
+              source: "address" as const,
+            }));
+            if (addressResults.length > 0) {
+              setResults((prev) => [...prev, ...addressResults]);
+            }
+          })
+          .catch(() => { /* Kakao 실패 시 무시 — Supabase 결과로 충분 */ });
+        return;
+      }
+
+      // 3) Supabase 결과가 없으면 Kakao 대기 후 표시
+      try {
+        const kakaoResults = await searchKakaoAddress(searchQuery);
+        if (currentSearchId !== searchIdRef.current) return;
+        const addressResults: SearchResult[] = kakaoResults.map((a) => ({
+          ...a,
+          source: "address" as const,
+        }));
+        setResults(addressResults);
+      } catch {
+        if (currentSearchId !== searchIdRef.current) return;
+        // Kakao도 실패하면 빈 결과
+        setResults([]);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "";
       setError(message.includes("fetch") || message.includes("network") ? "network" : "unknown");
@@ -394,9 +426,11 @@ const SearchPage = () => {
               className={`w-full h-14 rounded-[24px] border bg-card pl-12 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none transition-all duration-300 ${
                 isFocused
                   ? "border-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.15)]"
-                  : query.length === 0
-                    ? "border-input animate-breathing"
-                    : "border-input"
+                  : confirmedId
+                    ? "border-green-500 shadow-[0_0_0_3px_hsl(142_71%_45%/0.15)]"
+                    : query.length === 0
+                      ? "border-input animate-breathing"
+                      : "border-input"
               }`}
             />
             {/* Confidence tick */}
@@ -570,7 +604,7 @@ const SearchPage = () => {
         <Button
           variant="hero"
           size="xl"
-          className="w-full"
+          className={`w-full ${confirmedId ? "animate-bounce-once" : ""}`}
           disabled={!selectedCompany}
           onClick={handleAnalyze}
           aria-label={selectedCompany ? `${selectedCompany.name} 기준 통근 분석 시작` : "회사를 선택해주세요"}

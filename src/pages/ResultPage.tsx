@@ -15,6 +15,8 @@ import SummaryCards from "@/components/result/SummaryCards";
 import FilterTabs, { type SortMode } from "@/components/result/FilterTabs";
 import NeighborhoodCard, { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
 import CommuteHeatmap, { type Neighborhood as HeatmapNeighborhood } from "@/components/map/CommuteHeatmap";
+import SafeFilterToggle from "@/components/cost/SafeFilterToggle";
+import { calcAffordabilityRate, getAffordabilityLevel, DEFAULT_INCOME_BY_AGE } from "@/lib/affordability";
 
 function companyFromParams(params: URLSearchParams): Company | null {
   const id = params.get("companyId");
@@ -85,7 +87,11 @@ const ResultPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const company = (location.state as { company?: Company })?.company ?? companyFromParams(searchParams);
+  const companyParamKey = searchParams.toString();
+  const company = useMemo(() => {
+    return (location.state as { company?: Company })?.company ?? companyFromParams(searchParams);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, companyParamKey]);
   const { setCommuteResults } = useSearchStore();
 
   const [phase, setPhase] = useState<"loading" | "results" | "empty" | "error">("loading");
@@ -98,6 +104,10 @@ const ResultPage = () => {
   const [departureHour, setDepartureHour] = useState<string>('08:00-09:00');
   const [isApiReady, setIsApiReady] = useState(false);
   const [maxCommute, setMaxCommute] = useState(30);
+  const [userIncome, setUserIncome] = useState<number | null>(null);
+  const [safeOnly, setSafeOnly] = useState(false);
+  const [showIncomeInput, setShowIncomeInput] = useState(false);
+  const [incomeInputValue, setIncomeInputValue] = useState('');
   const pageLoadTimeRef = useRef<number>(Date.now());
   // Tracks the intended final phase so fetchResults doesn't bypass the loading animation
   const pendingPhaseRef = useRef<"results" | "empty" | "error">("empty");
@@ -117,14 +127,13 @@ const ResultPage = () => {
   }, [company]);
 
   // commuteResults를 store에 동기화하여 다른 페이지에서 접근 가능하게 함
-  useEffect(() => {
-    if (rawCommuteResults.length > 0) {
-      setCommuteResults(rawCommuteResults);
-    }
-  }, [rawCommuteResults, setCommuteResults]);
+  // useEffect 대신 fetchResults 내에서 직접 호출하여 race condition 방지
 
   const fetchResults = useCallback(async (maxMinutes: number = maxCommute) => {
     if (!company) return;
+
+    // BUG 6 수정: 새 회사 검색 시 이전 데이터 제거
+    setCommuteResults([]);
 
     if (isValidUUID(company.id)) {
       // 등록 회사: recommended_neighborhoods + ODsay 실시간 보정
@@ -168,8 +177,26 @@ const ResultPage = () => {
         commuteMap = new Map(odRaw.map((r) => [r.neighborhoodId, r]));
       }
 
+      // savings_amount가 0인 행이 있으면 회사 소재 구 평균 월세 기준으로 fallback 계산
+      let districtRefRent = 0;
+      const needsFallback = rows.some((r) => r.savings_amount === 0);
+      if (needsFallback) {
+        const { data: districtData } = await supabase
+          .from("neighborhoods")
+          .select("avg_rent")
+          .eq("district", company.district);
+        if (districtData && districtData.length > 0) {
+          districtRefRent = Math.round(
+            districtData.reduce((s, n) => s + n.avg_rent, 0) / districtData.length,
+          );
+        }
+      }
+
       const mapped: NeighborhoodResult[] = rows.map((r) => {
         const od = commuteMap.get(r.neighborhoods.id);
+        const savings = r.savings_amount > 0
+          ? r.savings_amount
+          : Math.max(0, districtRefRent - r.neighborhoods.avg_rent);
         return {
           id: r.neighborhoods.id,
           name: r.neighborhoods.name,
@@ -178,7 +205,7 @@ const ResultPage = () => {
           avg_rent: r.neighborhoods.avg_rent,
           commute_minutes: od?.commuteMinutes ?? r.commute_minutes,
           commute_route: od?.routeSummary ?? r.commute_route ?? "",
-          savings_amount: r.savings_amount,
+          savings_amount: savings,
           rank: r.rank,
         };
       });
@@ -198,12 +225,13 @@ const ResultPage = () => {
         transferCount: 0,
         walkMinutes: 0,
         totalFare: 0,
-        isEstimated: false,
+        isEstimated: true,
       }));
       const odMap = new Map(odRaw.map((r) => [r.neighborhoodId, r]));
       const mergedOd = fallbackOd.map((fb) => odMap.get(fb.neighborhoodId) ?? fb);
 
       setRawCommuteResults(mergedOd);
+      setCommuteResults(mergedOd);
       setHeatmapNeighborhoods(heatNeighborhoods);
       setResults(mapped);
       pendingPhaseRef.current = "results";
@@ -274,6 +302,12 @@ const ResultPage = () => {
         return;
       }
 
+      // 회사 소재 구의 평균 월세를 기준 금액으로 산출
+      const districtRents = neighborhoods.filter((n) => n.district === company.district);
+      const referenceRent = districtRents.length > 0
+        ? Math.round(districtRents.reduce((s, n) => s + n.avg_rent, 0) / districtRents.length)
+        : Math.round(neighborhoods.reduce((s, n) => s + n.avg_rent, 0) / neighborhoods.length);
+
       const mapped: NeighborhoodResult[] = filtered.flatMap((r, i) => {
         const nb = neighborhoodMap.get(r.neighborhoodId);
         if (!nb) return [];
@@ -285,7 +319,7 @@ const ResultPage = () => {
           avg_rent: nb.avg_rent,
           commute_minutes: r.commuteMinutes,
           commute_route: r.routeSummary,
-          savings_amount: 0,
+          savings_amount: Math.max(0, referenceRent - nb.avg_rent),
           rank: i + 1,
         }];
       });
@@ -297,6 +331,7 @@ const ResultPage = () => {
       });
 
       setRawCommuteResults(odResults);
+      setCommuteResults(odResults);
       setHeatmapNeighborhoods(heatNeighborhoods);
       setResults(mapped);
       pendingPhaseRef.current = "results";
@@ -343,13 +378,36 @@ const ResultPage = () => {
     }
   };
 
+  const effectiveIncome = userIncome ?? DEFAULT_INCOME_BY_AGE['30s'];
+
   const sorted = useMemo(() => {
     const arr = [...weightedResults];
     if (sortMode === "commute") arr.sort((a, b) => a.commute_minutes - b.commute_minutes);
     else if (sortMode === "rent") arr.sort((a, b) => a.avg_rent - b.avg_rent);
     else arr.sort((a, b) => a.rank - b.rank);
+
+    // 위험 등급 지역을 하단으로 정렬
+    arr.sort((a, b) => {
+      const aLevel = getAffordabilityLevel(calcAffordabilityRate(a.avg_rent, effectiveIncome));
+      const bLevel = getAffordabilityLevel(calcAffordabilityRate(b.avg_rent, effectiveIncome));
+      const order = { safe: 0, caution: 1, danger: 2 };
+      return order[aLevel] - order[bLevel];
+    });
+
+    if (safeOnly) {
+      return arr.filter((r) =>
+        getAffordabilityLevel(calcAffordabilityRate(r.avg_rent, effectiveIncome)) === 'safe'
+      );
+    }
     return arr;
-  }, [weightedResults, sortMode]);
+  }, [weightedResults, sortMode, effectiveIncome, safeOnly]);
+
+  const allDanger = useMemo(
+    () => weightedResults.length > 0 && weightedResults.every((r) =>
+      getAffordabilityLevel(calcAffordabilityRate(r.avg_rent, effectiveIncome)) === 'danger'
+    ),
+    [weightedResults, effectiveIncome],
+  );
 
   const avgCommute = useMemo(
     () => weightedResults.length
@@ -474,15 +532,92 @@ const ResultPage = () => {
               </section>
             )}
 
+            {/* 소득 입력 인라인 폼 */}
+            {showIncomeInput && (
+              <div className="rounded-xl border border-border bg-card p-4 space-y-3 animate-fade-in">
+                <p className="text-sm font-medium text-foreground">월 소득을 입력하세요 (만원)</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    placeholder="예: 300"
+                    value={incomeInputValue}
+                    onChange={(e) => setIncomeInputValue(e.target.value)}
+                    className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const v = parseInt(incomeInputValue, 10);
+                      if (v > 0) {
+                        setUserIncome(v);
+                        setShowIncomeInput(false);
+                      }
+                    }}
+                  >
+                    적용
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowIncomeInput(false)}
+                  >
+                    취소
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">소득 정보는 서버에 저장되지 않습니다</p>
+              </div>
+            )}
+
+            {/* 전체 지역 위험 등급 시 재검색 제안 */}
+            {allDanger && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 space-y-3 animate-fade-in">
+                <p className="text-sm font-medium text-red-700">
+                  모든 추천 지역이 주거비 부담 위험 등급이에요
+                </p>
+                <p className="text-xs text-red-600">다른 조건으로 다시 검색해보세요</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setMaxCommute(40);
+                      setIsApiReady(false);
+                      setPhase("loading");
+                      fetchResults(40);
+                    }}
+                  >
+                    통근 40분으로 확장
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowIncomeInput(true)}
+                  >
+                    내 소득 직접 입력
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate("/search")}
+                  >
+                    다른 회사로 검색
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* 카드 목록 */}
             <div>
-              <div className="relative mb-3">
-                <OnboardingTooltip
-                  id="result_filter"
-                  text="정렬 기준을 바꿔보세요 🔄"
-                  position="top"
-                />
-                <FilterTabs value={sortMode} onChange={setSortMode} />
+              <div className="relative mb-3 flex items-center justify-between gap-2">
+                <div className="relative flex-1">
+                  <OnboardingTooltip
+                    id="result_filter"
+                    text="정렬 기준을 바꿔보세요 🔄"
+                    position="top"
+                  />
+                  <FilterTabs value={sortMode} onChange={setSortMode} />
+                </div>
+                <SafeFilterToggle checked={safeOnly} onChange={setSafeOnly} />
               </div>
 
               <div className="space-y-3">
@@ -495,7 +630,12 @@ const ResultPage = () => {
                     ].join(" ").trim()}
                     onAnimationEnd={i === 1 ? () => setNudgeActive(false) : undefined}
                   >
-                    <NeighborhoodCard data={r} index={i} />
+                    <NeighborhoodCard
+                      data={r}
+                      index={i}
+                      income={userIncome}
+                      onRequestIncomeInput={() => setShowIncomeInput(true)}
+                    />
                   </div>
                 ))}
               </div>

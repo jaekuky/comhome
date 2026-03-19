@@ -6,6 +6,7 @@ import type { NeighborhoodCost } from "@/components/cost/CostComparisonCards";
  * 왕복 × 22일(월 평균 근무일) / 10,000
  */
 export function fareToMonthly(oneWayFareWon: number): number {
+  if (oneWayFareWon <= 0) return 0;
   return Math.round((oneWayFareWon * 2 * 22) / 10000);
 }
 

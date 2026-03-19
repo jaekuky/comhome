@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Clock, Wallet, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { trackEvent } from "@/lib/analytics";
+import AffordabilityBadge from "@/components/cost/AffordabilityBadge";
 
 export interface NeighborhoodResult {
   id: string;
@@ -19,9 +20,11 @@ export interface NeighborhoodResult {
 interface NeighborhoodCardProps {
   data: NeighborhoodResult;
   index: number;
+  income?: number | null;
+  onRequestIncomeInput?: () => void;
 }
 
-const NeighborhoodCard = ({ data, index }: NeighborhoodCardProps) => {
+const NeighborhoodCard = ({ data, index, income = null, onRequestIncomeInput }: NeighborhoodCardProps) => {
   const navigate = useNavigate();
   const ref = useRef<HTMLButtonElement>(null);
   const [visible, setVisible] = useState(false);
@@ -66,7 +69,11 @@ const NeighborhoodCard = ({ data, index }: NeighborhoodCardProps) => {
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </div>
 
-      <div className="flex items-center gap-4 text-xs">
+      <div className="mt-1">
+        <AffordabilityBadge rent={data.avg_rent} income={income} onRequestInput={onRequestIncomeInput} />
+      </div>
+
+      <div className="flex items-center gap-4 text-xs mt-2">
         <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium" style={{
           background: "hsl(var(--success) / 0.1)",
           color: "hsl(var(--success))"

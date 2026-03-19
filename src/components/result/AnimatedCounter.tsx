@@ -85,7 +85,7 @@ const AnimatedCounter = ({
       <span
         aria-live="polite"
         aria-atomic="true"
-        className={`text-3xl font-bold text-primary tabular-nums${isBouncing ? " animate-counter-bounce" : ""}`}
+        className={`text-3xl font-bold text-primary tabular-nums ${isBouncing ? "animate-counter-bounce" : ""}`}
       >
         {displayValue}
         {suffix}

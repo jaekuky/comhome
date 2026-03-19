@@ -69,7 +69,7 @@ const CostComparisonCards = ({
     [neighborhoods, currentRent, currentTransportCost, baseCommuteMinutes],
   );
 
-  const allNegative = diffs.every((d) => d.totalDiff > 0);
+  const allCostIncrease = diffs.every((d) => d.totalDiff > 0);
 
   const scrollTo = useCallback(
     (direction: "prev" | "next") => {
@@ -231,7 +231,7 @@ const CostComparisonCards = ({
       )}
 
       {/* 모든 지역이 손해일 때 시간 가치 전환 메시지 */}
-      {allNegative && (
+      {allCostIncrease && (
         <Card className="border-primary/20 bg-primary/[0.04]">
           <CardContent className="p-4">
             <p className="text-xs text-foreground leading-relaxed">

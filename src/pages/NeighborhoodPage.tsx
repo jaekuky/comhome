@@ -9,6 +9,7 @@ import { useSearchStore } from "@/stores/searchStore";
 import { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
 import { trackEvent } from "@/lib/analytics";
 import { toNeighborhoodCost, fareToMonthly } from "@/lib/costUtils";
+import { calcCommuteTime, type CommuteResult } from "@/lib/commuteService";
 import CommuteTimeline from "@/components/neighborhood/CommuteTimeline";
 import CostComparisonTable from "@/components/neighborhood/CostComparisonTable";
 import LivingInfoTabs from "@/components/neighborhood/LivingInfoTabs";
@@ -17,6 +18,7 @@ import BottomCTA from "@/components/neighborhood/BottomCTA";
 import CostInputForm from "@/components/cost/CostInputForm";
 import CostComparisonCards from "@/components/cost/CostComparisonCards";
 import InsightCopy from "@/components/cost/InsightCopy";
+import AffordabilityGauge from "@/components/cost/AffordabilityGauge";
 
 interface HousingListing {
   id: string;
@@ -53,22 +55,46 @@ const NeighborhoodPage = () => {
   const [transportCost, setTransportCost] = useState(7);
   const [income, setIncome] = useState(0);
 
-  // commute_cache totalFare 기반 교통비 자동 세팅
+  // store에 commuteResults가 없으면 on-demand fetch
+  const [localCommute, setLocalCommute] = useState<CommuteResult | null>(null);
+
   useEffect(() => {
     if (!id) return;
-    const match = commuteResults.find((r) => r.neighborhoodId === id);
-    if (match && match.totalFare > 0) {
-      setTransportCost(fareToMonthly(match.totalFare));
+
+    // store에 이미 데이터가 있으면 사용
+    const storeMatch = commuteResults.find((r) => r.neighborhoodId === id);
+    if (storeMatch) {
+      setLocalCommute(storeMatch);
+      if (storeMatch.totalFare > 0) {
+        setTransportCost(fareToMonthly(storeMatch.totalFare));
+      }
+      return;
     }
-  }, [id, commuteResults]);
+
+    // store가 비어있고 회사 좌표가 있으면 직접 fetch
+    if (!selectedCompany?.latitude || !selectedCompany?.longitude) return;
+
+    let cancelled = false;
+    calcCommuteTime(selectedCompany, [{ id }]).then((results) => {
+      if (cancelled) return;
+      const match = results.find((r) => r.neighborhoodId === id);
+      if (match) {
+        setLocalCommute(match);
+        if (match.totalFare > 0) {
+          setTransportCost(fareToMonthly(match.totalFare));
+        }
+      }
+    });
+    return () => { cancelled = true; };
+  }, [id, commuteResults, selectedCompany]);
 
   // NeighborhoodCost 변환 (단일 동네)
   const neighborhoodCosts = useMemo(() => {
     if (!neighborhood) return [];
-    const commute = commuteResults.find((r) => r.neighborhoodId === neighborhood.id);
+    const commute = localCommute ?? commuteResults.find((r) => r.neighborhoodId === neighborhood.id);
     const medianRent = rentStats.find((s) => s.housing_type === "mixed")?.median_rent ?? null;
     return [toNeighborhoodCost(neighborhood, commute, medianRent)];
-  }, [neighborhood, commuteResults, rentStats]);
+  }, [neighborhood, localCommute, commuteResults, rentStats]);
 
   useEffect(() => {
     if (!id || id.trim() === "") return;
@@ -240,6 +266,14 @@ const NeighborhoodPage = () => {
             currentTransportCost={transportCost}
             income={income}
           />
+
+          {income > 0 && (
+            <AffordabilityGauge
+              currentRent={currentRent}
+              newRent={neighborhood.avg_rent}
+              income={income}
+            />
+          )}
 
           <InsightCopy
             neighborhoods={neighborhoodCosts}

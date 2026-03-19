@@ -35,7 +35,15 @@ function isValidCompany(item: unknown): item is Company {
 
 export const useSearchStore = create<SearchState>((set, get) => ({
   selectedCompany: null,
-  setSelectedCompany: (company) => set({ selectedCompany: company }),
+  setSelectedCompany: (company) => {
+    const prev = get().selectedCompany;
+    // 회사가 바뀌면 이전 회사의 통근 데이터를 클리어
+    if (prev?.id !== company?.id) {
+      set({ selectedCompany: company, commuteResults: [] });
+    } else {
+      set({ selectedCompany: company });
+    }
+  },
   recentSearches: [],
   addRecentSearch: (company) => {
     const current = get().recentSearches.filter((c) => c.id !== company.id);

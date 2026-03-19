@@ -186,14 +186,19 @@ const NeighborhoodPage = () => {
     );
   }
 
+  // 통근 데이터 소스 우선순위: recommendation (정적) → localCommute (ODsay 실시간)
+  const commuteMinutes = recommendation?.commute_minutes ?? localCommute?.commuteMinutes ?? null;
+  const commuteRoute = recommendation?.commute_route ?? localCommute?.routeSummary ?? "";
+  const hasCommuteData = commuteMinutes !== null && commuteMinutes > 0;
+
   const neighborhoodResult: NeighborhoodResult = {
     id: neighborhood.id,
     name: neighborhood.name,
     district: neighborhood.district,
     city: neighborhood.city,
     avg_rent: neighborhood.avg_rent,
-    commute_minutes: recommendation?.commute_minutes ?? 0,
-    commute_route: recommendation?.commute_route ?? "",
+    commute_minutes: commuteMinutes ?? 0,
+    commute_route: commuteRoute,
     savings_amount: recommendation?.savings_amount ?? 0,
     rank: recommendation?.rank ?? 0,
   };
@@ -218,9 +223,9 @@ const NeighborhoodPage = () => {
           <div className="flex items-center gap-2 mt-2">
             <Badge variant="outline" className="text-xs">{neighborhood.district}</Badge>
             <Badge variant="outline" className="text-xs">{neighborhood.city}</Badge>
-            {recommendation && (
+            {hasCommuteData && (
               <Badge className="text-xs" style={{ background: "hsl(var(--success))", color: "hsl(var(--success-foreground))" }}>
-                통근 {recommendation.commute_minutes}분
+                통근 {commuteMinutes}분
               </Badge>
             )}
           </div>
@@ -231,12 +236,12 @@ const NeighborhoodPage = () => {
         </div>
 
         {/* Commute */}
-        {recommendation && selectedCompany && (
+        {hasCommuteData && selectedCompany && (
           <CommuteTimeline
             companyName={selectedCompany.name}
             neighborhoodName={neighborhood.name}
-            commuteMinutes={recommendation.commute_minutes}
-            commuteRoute={recommendation.commute_route || ""}
+            commuteMinutes={commuteMinutes!}
+            commuteRoute={commuteRoute}
           />
         )}
 
@@ -285,6 +290,8 @@ const NeighborhoodPage = () => {
         {/* Living Info */}
         <LivingInfoTabs
           neighborhoodName={neighborhood.name}
+          latitude={neighborhood.latitude}
+          longitude={neighborhood.longitude}
         />
 
         {/* Housing Preview */}

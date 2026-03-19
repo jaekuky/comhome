@@ -158,7 +158,14 @@ const ResultPage = () => {
         .order("rank", { ascending: true })
         .limit(10);
 
-      if (error || !data || data.length === 0) {
+      if (error) {
+        setErrorMessage("데이터를 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+        pendingPhaseRef.current = "error";
+        setIsApiReady(true);
+        return;
+      }
+
+      if (!data || data.length === 0) {
         pendingPhaseRef.current = "empty";
         setIsApiReady(true);
         return;
@@ -207,6 +214,8 @@ const ResultPage = () => {
           commute_route: od?.routeSummary ?? r.commute_route ?? "",
           savings_amount: savings,
           rank: r.rank,
+          latitude: r.neighborhoods.latitude,
+          longitude: r.neighborhoods.longitude,
         };
       });
 
@@ -321,6 +330,8 @@ const ResultPage = () => {
           commute_route: r.routeSummary,
           savings_amount: Math.max(0, referenceRent - nb.avg_rent),
           rank: i + 1,
+          latitude: nb.latitude,
+          longitude: nb.longitude,
         }];
       });
 
@@ -340,7 +351,7 @@ const ResultPage = () => {
       pendingPhaseRef.current = "empty";
       setIsApiReady(true);
     }
-  }, [company, maxCommute]);
+  }, [company, maxCommute, setCommuteResults]);
 
   useEffect(() => {
     if (company?.id) {
@@ -382,16 +393,19 @@ const ResultPage = () => {
 
   const sorted = useMemo(() => {
     const arr = [...weightedResults];
-    if (sortMode === "commute") arr.sort((a, b) => a.commute_minutes - b.commute_minutes);
-    else if (sortMode === "rent") arr.sort((a, b) => a.avg_rent - b.avg_rent);
-    else arr.sort((a, b) => a.rank - b.rank);
+    const levelOrder = { safe: 0, caution: 1, danger: 2 };
 
-    // 위험 등급 지역을 하단으로 정렬
     arr.sort((a, b) => {
+      // 1차: 위험 등급 (danger를 하단으로)
       const aLevel = getAffordabilityLevel(calcAffordabilityRate(a.avg_rent, effectiveIncome));
       const bLevel = getAffordabilityLevel(calcAffordabilityRate(b.avg_rent, effectiveIncome));
-      const order = { safe: 0, caution: 1, danger: 2 };
-      return order[aLevel] - order[bLevel];
+      const levelDiff = levelOrder[aLevel] - levelOrder[bLevel];
+      if (levelDiff !== 0) return levelDiff;
+
+      // 2차: 사용자 선택 정렬 (같은 등급 내에서)
+      if (sortMode === "commute") return a.commute_minutes - b.commute_minutes;
+      if (sortMode === "rent") return a.avg_rent - b.avg_rent;
+      return a.rank - b.rank;
     });
 
     if (safeOnly) {
@@ -475,7 +489,7 @@ const ResultPage = () => {
 
         {/* 로딩 */}
         {phase === "loading" && (
-          <NarrativeLoading companyName={company.name} onComplete={handleLoadingComplete} isApiReady={isApiReady} />
+          <NarrativeLoading companyName={company.name} onComplete={handleLoadingComplete} isApiReady={isApiReady} maxCommute={maxCommute} />
         )}
 
         {/* 결과 */}

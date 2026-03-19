@@ -6,6 +6,7 @@ interface NarrativeLoadingProps {
   companyName: string;
   onComplete: () => void;
   isApiReady: boolean;
+  maxCommute?: number;
 }
 
 // Step 1: Map zooms into company location
@@ -87,12 +88,12 @@ const PinDropScene = () => (
 );
 
 const LABELS = [
-  (name: string) => `${name} 주변을 탐색합니다`,
-  () => "30분 안에 도착할 수 있는 곳을 계산합니다",
-  () => "최적의 동네를 찾았습니다!",
+  (name: string, _m: number) => `${name} 주변을 탐색합니다`,
+  (_n: string, m: number) => `${m}분 안에 도착할 수 있는 곳을 계산합니다`,
+  (_n: string, _m: number) => "최적의 동네를 찾았습니다!",
 ] as const;
 
-const NarrativeLoading = ({ companyName, onComplete, isApiReady }: NarrativeLoadingProps) => {
+const NarrativeLoading = ({ companyName, onComplete, isApiReady, maxCommute = 30 }: NarrativeLoadingProps) => {
   const [step, setStep] = useState(0);
   const [animationDone, setAnimationDone] = useState(false);
   const onCompleteRef = useRef(onComplete);
@@ -155,7 +156,7 @@ const NarrativeLoading = ({ companyName, onComplete, isApiReady }: NarrativeLoad
             reducedMotion ? "" : "animate-fade-up"
           }`}
         >
-          {LABELS[step](companyName)}
+          {LABELS[step](companyName, maxCommute)}
         </p>
       )}
 

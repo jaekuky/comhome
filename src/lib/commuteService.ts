@@ -60,8 +60,13 @@ async function fetchBatch(
   }
 
   const data = await res.json();
+  const rawResults = Array.isArray(data.results) ? data.results : [];
+  // neighborhoodId가 유효한 결과만 사용
+  const validResults: CommuteResult[] = rawResults.filter(
+    (r: Record<string, unknown>) => typeof r.neighborhoodId === "string" && r.neighborhoodId,
+  );
   return {
-    results: (data.results ?? []) as CommuteResult[],
+    results: validResults,
     fromCache: data.fromCache ?? false,
     errors: data.errors ?? [],
   };
@@ -98,8 +103,10 @@ export async function calcByOdsay(
       allErrors.push(...batch.errors);
       if (!batch.fromCache) allFromCache = false;
     } catch (err) {
-      console.error(`[commuteService] 배치 ${i / BATCH_SIZE + 1} 실패:`, err);
-      allErrors.push(err instanceof Error ? err.message : "알 수 없는 오류");
+      const batchNum = i / BATCH_SIZE + 1;
+      const errorMsg = err instanceof Error ? err.message : "알 수 없는 오류";
+      console.error(`[commuteService] 배치 ${batchNum} 실패 (IDs: ${batchIds.join(', ')}):`, err);
+      allErrors.push(`배치 ${batchNum} 실패: ${errorMsg}`);
     }
   }
 
@@ -120,12 +127,20 @@ export async function calcByOdsay(
 //   throw new Error("Not implemented");
 // }
 
+export interface CalcCommuteTimeResult {
+  results: CommuteResult[];
+  errors: string[];
+}
+
 export async function calcCommuteTime(
   company: Company,
   neighborhoods: Neighborhood[],
 ): Promise<CommuteResult[]> {
-  const { results: raw } = await calcByOdsay(company, neighborhoods);
+  const { results: raw, errors } = await calcByOdsay(company, neighborhoods);
   // MAU 1,000+ 시 calcByOdsay → calcByKakaoMobility로 변경
   // 러시아워 가중치는 UI 레이어(ResultPage weightedResults)에서 적용
+  if (errors.length > 0) {
+    console.warn(`[commuteService] ${errors.length}건의 오류 발생:`, errors);
+  }
   return raw;
 }

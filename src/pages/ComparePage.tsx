@@ -26,20 +26,25 @@ const ComparePage = () => {
 
   // store에 없는 동네의 commuteResult를 on-demand fetch
   const [localCommutes, setLocalCommutes] = useState<CommuteResult[]>([]);
+  const [commuteFetchDone, setCommuteFetchDone] = useState(false);
 
   useEffect(() => {
-    if (compareList.length === 0) return;
+    if (compareList.length === 0) { setCommuteFetchDone(true); return; }
 
     const missingIds = compareList
       .filter((item) => !commuteResults.some((r) => r.neighborhoodId === item.id))
       .map((item) => ({ id: item.id }));
 
-    if (missingIds.length === 0) return;
-    if (!selectedCompany?.latitude || !selectedCompany?.longitude) return;
+    if (missingIds.length === 0) { setCommuteFetchDone(true); return; }
+    if (!selectedCompany?.latitude || !selectedCompany?.longitude) { setCommuteFetchDone(true); return; }
 
     let cancelled = false;
+    setCommuteFetchDone(false);
     calcCommuteTime(selectedCompany, missingIds).then((results) => {
-      if (!cancelled) setLocalCommutes(results);
+      if (!cancelled) {
+        setLocalCommutes(results);
+        setCommuteFetchDone(true);
+      }
     });
     return () => { cancelled = true; };
   }, [compareList, commuteResults, selectedCompany]);
@@ -53,8 +58,9 @@ const ComparePage = () => {
     return map;
   }, [commuteResults, localCommutes]);
 
-  // commute_cache의 totalFare 기반 교통비 자동 세팅
+  // commute_cache의 totalFare 기반 교통비 자동 세팅 (fetch 완료 후에만)
   useEffect(() => {
+    if (!commuteFetchDone) return;
     const relevant = compareList
       .map((item) => mergedCommutes.get(item.id))
       .filter((r): r is CommuteResult => r !== undefined && r.totalFare > 0);
@@ -62,7 +68,7 @@ const ComparePage = () => {
       const avgFare = relevant.reduce((sum, r) => sum + r.totalFare, 0) / relevant.length;
       setTransportCost(fareToMonthly(avgFare));
     }
-  }, [compareList, mergedCommutes]);
+  }, [compareList, mergedCommutes, commuteFetchDone]);
 
   // compareList 동네들의 rent_stats median_rent 조회
   useEffect(() => {
@@ -70,11 +76,23 @@ const ComparePage = () => {
     let cancelled = false;
 
     const fetchRentStats = async () => {
-      const names = compareList.map((item) => item.name);
+      // neighborhoods 테이블에서 정확한 이름을 가져와 rent_stats와 매칭
+      const ids = compareList.map((item) => item.id);
+      const { data: nbData } = await supabase
+        .from("neighborhoods")
+        .select("id, name")
+        .in("id", ids);
+
+      const nameMap = new Map<string, string>(); // id → name (DB 기준)
+      if (nbData) {
+        for (const nb of nbData) nameMap.set(nb.id, nb.name);
+      }
+
+      const dbNames = [...new Set(nbData?.map((nb) => nb.name) ?? compareList.map((item) => item.name))];
       const { data } = await supabase
         .from("rent_stats")
         .select("dong_name, median_rent, base_ym")
-        .in("dong_name", names)
+        .in("dong_name", dbNames)
         .eq("housing_type", "mixed")
         .order("base_ym", { ascending: false });
 
@@ -87,6 +105,15 @@ const ComparePage = () => {
           result[row.dong_name] = row.median_rent;
         }
       }
+
+      // compareList의 name 기준으로도 매핑 (DB name이 다를 경우 대비)
+      for (const item of compareList) {
+        const dbName = nameMap.get(item.id);
+        if (dbName && dbName !== item.name && result[dbName] && !result[item.name]) {
+          result[item.name] = result[dbName];
+        }
+      }
+
       setMedianRents(result);
     };
 
@@ -101,8 +128,12 @@ const ComparePage = () => {
     );
   }, [compareList, mergedCommutes, medianRents]);
 
-  // 기존 비교 로직
-  const getTransportCost = (commute: number) => Math.max(3, 7 - Math.floor(commute * 0.08));
+  // 실제 통근 요금 기반 교통비 (만원), fallback: 하드코딩 추정
+  const getTransportCost = (item: typeof compareList[0]) => {
+    const commute = mergedCommutes.get(item.id);
+    if (commute && commute.totalFare > 0) return fareToMonthly(commute.totalFare);
+    return Math.max(3, 7 - Math.floor(item.commute_minutes * 0.08));
+  };
   const getScore = (item: typeof compareList[0]) => {
     const commuteScore = Math.max(0, 40 - item.commute_minutes) * 1.5;
     const rentScore = Math.max(0, 70 - item.avg_rent) * 0.8;
@@ -149,14 +180,14 @@ const ComparePage = () => {
     },
     {
       label: "월 교통비",
-      values: items.map((i) => `${getTransportCost(i.commute_minutes)}만원`),
-      raw: items.map((i) => getTransportCost(i.commute_minutes)),
+      values: items.map((i) => `${getTransportCost(i)}만원`),
+      raw: items.map((i) => getTransportCost(i)),
       bestIs: "min" as const,
     },
     {
       label: "월 총 비용",
-      values: items.map((i) => `${i.avg_rent + getTransportCost(i.commute_minutes)}만원`),
-      raw: items.map((i) => i.avg_rent + getTransportCost(i.commute_minutes)),
+      values: items.map((i) => `${i.avg_rent + getTransportCost(i)}만원`),
+      raw: items.map((i) => i.avg_rent + getTransportCost(i)),
       bestIs: "min" as const,
     },
     {

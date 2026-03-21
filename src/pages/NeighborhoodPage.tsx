@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { type Tables } from "@/integrations/supabase/types";
 import { useSearchStore } from "@/stores/searchStore";
-import { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
+import { type NeighborhoodResult } from "@/types/neighborhood";
 import { trackEvent } from "@/lib/analytics";
 import { toNeighborhoodCost, fareToMonthly } from "@/lib/costUtils";
 import { calcCommuteTime, type CommuteResult } from "@/lib/commuteService";
@@ -57,9 +57,11 @@ const NeighborhoodPage = () => {
 
   // store에 commuteResults가 없으면 on-demand fetch
   const [localCommute, setLocalCommute] = useState<CommuteResult | null>(null);
+  const [commuteFetched, setCommuteFetched] = useState(false);
 
   useEffect(() => {
     if (!id) return;
+    setCommuteFetched(false);
 
     // store에 이미 데이터가 있으면 사용
     const storeMatch = commuteResults.find((r) => r.neighborhoodId === id);
@@ -68,11 +70,15 @@ const NeighborhoodPage = () => {
       if (storeMatch.totalFare > 0) {
         setTransportCost(fareToMonthly(storeMatch.totalFare));
       }
+      setCommuteFetched(true);
       return;
     }
 
     // store가 비어있고 회사 좌표가 있으면 직접 fetch
-    if (!selectedCompany?.latitude || !selectedCompany?.longitude) return;
+    if (!selectedCompany?.latitude || !selectedCompany?.longitude) {
+      setCommuteFetched(true);
+      return;
+    }
 
     let cancelled = false;
     calcCommuteTime(selectedCompany, [{ id }]).then((results) => {
@@ -84,6 +90,9 @@ const NeighborhoodPage = () => {
           setTransportCost(fareToMonthly(match.totalFare));
         }
       }
+      setCommuteFetched(true);
+    }).catch(() => {
+      if (!cancelled) setCommuteFetched(true);
     });
     return () => { cancelled = true; };
   }, [id, commuteResults, selectedCompany]);
@@ -139,12 +148,22 @@ const NeighborhoodPage = () => {
               .from("rent_stats")
               .select("*")
               .eq("dong_name", dongName)
+              .eq("housing_type", "mixed")
               .order("base_ym", { ascending: false })
               .limit(10);
             if (!cancelled && statsData && statsData.length > 0) {
-              // 가장 최신 base_ym의 데이터만 사용
+              // 가장 최신 base_ym의 데이터를 사용, 불완전하면 차선 월로 fallback
               const latestYm = statsData[0].base_ym;
-              setRentStats(statsData.filter((s) => s.base_ym === latestYm));
+              const latestData = statsData.filter((s) => s.base_ym === latestYm);
+              if (latestData.length > 0 && latestData.some((s) => s.median_rent !== null)) {
+                setRentStats(latestData);
+              } else {
+                // 최신 월에 유효 데이터 없으면 전체에서 median_rent가 있는 첫 번째 base_ym 사용
+                const validRow = statsData.find((s) => s.median_rent !== null);
+                if (validRow) {
+                  setRentStats(statsData.filter((s) => s.base_ym === validRow.base_ym));
+                }
+              }
             }
           }
         }
@@ -186,10 +205,11 @@ const NeighborhoodPage = () => {
     );
   }
 
-  // 통근 데이터 소스 우선순위: recommendation (정적) → localCommute (ODsay 실시간)
-  const commuteMinutes = recommendation?.commute_minutes ?? localCommute?.commuteMinutes ?? null;
-  const commuteRoute = recommendation?.commute_route ?? localCommute?.routeSummary ?? "";
+  // 통근 데이터 소스 우선순위: localCommute (ODsay 실시간) → recommendation (정적)
+  const commuteMinutes = localCommute?.commuteMinutes ?? recommendation?.commute_minutes ?? null;
+  const commuteRoute = localCommute?.routeSummary ?? recommendation?.commute_route ?? "";
   const hasCommuteData = commuteMinutes !== null && commuteMinutes > 0;
+  const commuteLoading = !commuteFetched && !hasCommuteData;
 
   const neighborhoodResult: NeighborhoodResult = {
     id: neighborhood.id,
@@ -197,10 +217,12 @@ const NeighborhoodPage = () => {
     district: neighborhood.district,
     city: neighborhood.city,
     avg_rent: neighborhood.avg_rent,
-    commute_minutes: commuteMinutes ?? 0,
+    commute_minutes: hasCommuteData ? commuteMinutes : 0,
     commute_route: commuteRoute,
     savings_amount: recommendation?.savings_amount ?? 0,
     rank: recommendation?.rank ?? 0,
+    latitude: neighborhood.latitude,
+    longitude: neighborhood.longitude,
   };
 
   return (
@@ -236,6 +258,12 @@ const NeighborhoodPage = () => {
         </div>
 
         {/* Commute */}
+        {commuteLoading && selectedCompany && (
+          <div className="rounded-xl border border-border bg-card p-4 animate-pulse">
+            <div className="h-4 w-32 bg-muted rounded mb-2" />
+            <div className="h-3 w-48 bg-muted rounded" />
+          </div>
+        )}
         {hasCommuteData && selectedCompany && (
           <CommuteTimeline
             companyName={selectedCompany.name}

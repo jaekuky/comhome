@@ -2,12 +2,16 @@ const SESSION_KEY = "comhome_session_id";
 const ANALYSIS_COUNT_KEY = "comhome_analysis_count";
 
 function getSessionId(): string {
-  let id = sessionStorage.getItem(SESSION_KEY);
-  if (!id) {
-    id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    sessionStorage.setItem(SESSION_KEY, id);
+  try {
+    let id = sessionStorage.getItem(SESSION_KEY);
+    if (!id) {
+      id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      sessionStorage.setItem(SESSION_KEY, id);
+    }
+    return id;
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
-  return id;
 }
 
 export function getDeviceType(): "mobile" | "tablet" | "desktop" {
@@ -54,7 +58,8 @@ type EventName =
   | "compare_added"
   | "housing_viewed"
   | "share_clicked"
-  | "quick_access_clicked";
+  | "quick_access_clicked"
+  | "listing_link_clicked";
 
 interface EventParams {
   company_id?: string;

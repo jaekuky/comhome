@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { BarChart3, Plus, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSearchStore } from "@/stores/searchStore";
-import { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
+import { type NeighborhoodResult } from "@/types/neighborhood";
 import { toast } from "@/hooks/use-toast";
 
 interface BottomCTAProps {
@@ -21,7 +21,9 @@ const BottomCTA = ({ neighborhood }: BottomCTAProps) => {
     }
     const added = addToCompare(neighborhood);
     if (added) {
-      toast({ title: `${neighborhood.name} 비교 목록에 추가됨`, description: `${compareList.length + 1}/3개 선택됨` });
+      // addToCompare 후 store가 이미 업데이트되었으므로 최신 길이를 읽어옴
+      const updatedCount = useSearchStore.getState().compareList.length;
+      toast({ title: `${neighborhood.name} 비교 목록에 추가됨`, description: `${updatedCount}/3개 선택됨` });
     } else {
       toast({ title: "최대 3개까지 비교할 수 있어요", variant: "destructive" });
     }

@@ -1,5 +1,19 @@
 import type { CommuteResult } from "@/lib/commuteService";
-import type { NeighborhoodCost } from "@/components/cost/CostComparisonCards";
+
+export interface NeighborhoodCost {
+  id: string;
+  name: string;
+  district: string;
+  /** rent_stats median_rent (만원) */
+  medianRent: number;
+  /** commute_cache totalFare → 만원 환산 (왕복 × 22일) */
+  monthlyTransportCost: number;
+  /** 편도 통근 시간 (분) */
+  commuteMinutes: number;
+}
+
+/** 현재 통근 시간 기준 (분) — CostComparisonCards, InsightCopy에서 공통 사용 */
+export const BASE_COMMUTE_MINUTES = 60;
 
 /**
  * 편도 요금(원) → 월간 교통비(만원) 변환
@@ -18,13 +32,22 @@ export function toNeighborhoodCost(
   commuteResult: CommuteResult | undefined,
   medianRent: number | null,
 ): NeighborhoodCost {
+  // commuteResult가 undefined이면 데이터 미존재 → 기본 추정값 사용
+  // commuteResult가 있지만 totalFare=0이면 추정 데이터(isEstimated) → 기본 교통비 추정
+  const DEFAULT_TRANSPORT_COST = 7; // 만원 (서울 평균 대중교통 월 비용 추정)
   const fare = commuteResult?.totalFare ?? 0;
+  const transportCost = commuteResult === undefined
+    ? DEFAULT_TRANSPORT_COST
+    : fare > 0
+      ? fareToMonthly(fare)
+      : DEFAULT_TRANSPORT_COST;
+
   return {
     id: neighborhood.id,
     name: neighborhood.name,
     district: neighborhood.district,
     medianRent: medianRent ?? neighborhood.avg_rent,
-    monthlyTransportCost: fareToMonthly(fare),
+    monthlyTransportCost: transportCost,
     commuteMinutes: commuteResult?.commuteMinutes ?? 0,
   };
 }

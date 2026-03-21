@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { type NeighborhoodResult } from '@/components/result/NeighborhoodCard';
+import { type NeighborhoodResult } from '@/types/neighborhood';
 import { type CommuteResult } from '@/lib/commuteService';
 
 export interface Company {
@@ -30,7 +30,11 @@ const RECENT_KEY = 'comhome_recent_searches';
 function isValidCompany(item: unknown): item is Company {
   if (typeof item !== 'object' || item === null) return false;
   const obj = item as Record<string, unknown>;
-  return typeof obj.id === 'string' && typeof obj.name === 'string' && typeof obj.address === 'string' && typeof obj.district === 'string';
+  if (typeof obj.id !== 'string' || typeof obj.name !== 'string' || typeof obj.address !== 'string' || typeof obj.district !== 'string') return false;
+  // 좌표는 number 또는 null만 허용 (문자열 "37.5" 등 차단)
+  if (obj.latitude !== null && typeof obj.latitude !== 'number') return false;
+  if (obj.longitude !== null && typeof obj.longitude !== 'number') return false;
+  return true;
 }
 
 export const useSearchStore = create<SearchState>((set, get) => ({

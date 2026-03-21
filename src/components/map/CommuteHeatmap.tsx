@@ -297,9 +297,9 @@ export default function CommuteHeatmap({
       bounds.extend(pos);
 
       const result = resultMap.get(n.id);
-      const rawMinutes = result?.commuteMinutes ?? 35;
-      const weighted = applyRushHourWeight(rawMinutes, departureHour);
-      const { fill, opacity } = resolveColor(weighted);
+      const rawMinutes = result?.commuteMinutes ?? null;
+      const weighted = rawMinutes !== null ? applyRushHourWeight(rawMinutes, departureHour) : null;
+      const { fill, opacity } = weighted !== null ? resolveColor(weighted) : { fill: "#95A5A6", opacity: 0.2 };
 
       // 원형 오버레이
       const circle = new kakao.maps.Circle({

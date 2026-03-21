@@ -40,7 +40,7 @@ async function fetchKakaoAddress(query: string): Promise<KakaoAddressResult[]> {
       doc.road_address?.region_2depth_name ||
       "";
     return [{
-      id: `kakao-${doc.address_name}`,
+      id: `kakao-${lat}-${lng}`,
       name: doc.address_name,
       address: doc.address_name,
       district: region2,

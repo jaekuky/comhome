@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { type Company, useSearchStore } from "@/stores/searchStore";
 import { toast } from "@/hooks/use-toast";
+import { useListingSession } from "@/hooks/useListingSession";
 import { trackEvent } from "@/lib/analytics";
 import { applyRushHourWeight, RUSH_HOUR_MULTIPLIER, calcCommuteTime } from "@/lib/commuteService";
 import type { CommuteResult } from "@/lib/commuteService";
@@ -13,7 +14,8 @@ import NarrativeLoading from "@/components/result/NarrativeLoading";
 import InsightBanner from "@/components/result/InsightBanner";
 import SummaryCards from "@/components/result/SummaryCards";
 import FilterTabs, { type SortMode } from "@/components/result/FilterTabs";
-import NeighborhoodCard, { type NeighborhoodResult } from "@/components/result/NeighborhoodCard";
+import NeighborhoodCard from "@/components/result/NeighborhoodCard";
+import { type NeighborhoodResult } from "@/types/neighborhood";
 import CommuteHeatmap, { type Neighborhood as HeatmapNeighborhood } from "@/components/map/CommuteHeatmap";
 import SafeFilterToggle from "@/components/cost/SafeFilterToggle";
 import { calcAffordabilityRate, getAffordabilityLevel, DEFAULT_INCOME_BY_AGE } from "@/lib/affordability";
@@ -105,10 +107,20 @@ const ResultPage = () => {
   const [isApiReady, setIsApiReady] = useState(false);
   const [maxCommute, setMaxCommute] = useState(30);
   const [userIncome, setUserIncome] = useState<number | null>(null);
-  const [safeOnly, setSafeOnly] = useState(false);
+  const [safeOnly, _setSafeOnly] = useState(() => sessionStorage.getItem("comhome_safe_only") === "true");
+  const setSafeOnly = useCallback((v: boolean) => {
+    _setSafeOnly(v);
+    sessionStorage.setItem("comhome_safe_only", String(v));
+  }, []);
   const [showIncomeInput, setShowIncomeInput] = useState(false);
   const [incomeInputValue, setIncomeInputValue] = useState('');
   const pageLoadTimeRef = useRef<number>(Date.now());
+
+  const { saveBeforeNavigate } = useListingSession(
+    company?.id,
+    results,
+    (restored) => setResults(restored),
+  );
   // Tracks the intended final phase so fetchResults doesn't bypass the loading animation
   const pendingPhaseRef = useRef<"results" | "empty" | "error">("empty");
 
@@ -132,8 +144,7 @@ const ResultPage = () => {
   const fetchResults = useCallback(async (maxMinutes: number = maxCommute) => {
     if (!company) return;
 
-    // BUG 6 수정: 새 회사 검색 시 이전 데이터 제거
-    setCommuteResults([]);
+    // commuteResults는 모든 데이터가 준비된 후 한 번에 업데이트 (race condition 방지)
 
     if (isValidUUID(company.id)) {
       // 등록 회사: recommended_neighborhoods + ODsay 실시간 보정
@@ -351,13 +362,17 @@ const ResultPage = () => {
       pendingPhaseRef.current = "empty";
       setIsApiReady(true);
     }
-  }, [company, maxCommute, setCommuteResults]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company, setCommuteResults]);
 
   useEffect(() => {
     if (company?.id) {
       fetchResults();
     }
-  }, [company, fetchResults]);
+    // maxCommute 변경 시 이중 호출 방지: fetchResults를 의존성에서 제외
+    // maxCommute 확장은 버튼 클릭 핸들러(fetchResults(40))에서 직접 호출
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company?.id]);
 
   useEffect(() => {
     if (phase !== "results") return;
@@ -649,6 +664,7 @@ const ResultPage = () => {
                       index={i}
                       income={userIncome}
                       onRequestIncomeInput={() => setShowIncomeInput(true)}
+                      onBeforeListingNavigate={saveBeforeNavigate}
                     />
                   </div>
                 ))}

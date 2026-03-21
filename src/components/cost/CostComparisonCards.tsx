@@ -4,18 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import AnimatedCounter from "@/components/result/AnimatedCounter";
-
-interface NeighborhoodCost {
-  id: string;
-  name: string;
-  district: string;
-  /** rent_stats median_rent (만원) */
-  medianRent: number;
-  /** commute_cache totalFare → 만원 환산 (왕복 × 22일) */
-  monthlyTransportCost: number;
-  /** 편도 통근 시간 (분) */
-  commuteMinutes: number;
-}
+import { BASE_COMMUTE_MINUTES, type NeighborhoodCost } from "@/lib/costUtils";
 
 interface CostComparisonCardsProps {
   neighborhoods: NeighborhoodCost[];
@@ -55,11 +44,8 @@ const CostComparisonCards = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // 현재 통근 시간 기준: 가장 긴 통근 시간을 "현재"로 추정
-  const baseCommuteMinutes = useMemo(
-    () => Math.max(...neighborhoods.map((n) => n.commuteMinutes), 60),
-    [neighborhoods],
-  );
+  // 현재 통근 시간 기준: 고정값 사용 (InsightCopy와 동일 기준)
+  const baseCommuteMinutes = BASE_COMMUTE_MINUTES;
 
   const diffs = useMemo(
     () =>

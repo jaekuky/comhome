@@ -34,6 +34,12 @@ const HousingPage = () => {
 
   useEffect(() => {
     if (!neighborhoodId) return;
+    const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(neighborhoodId);
+    if (!isValidUUID) {
+      setError("유효하지 않은 동네 ID입니다");
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     const loadData = async () => {
       setLoading(true);

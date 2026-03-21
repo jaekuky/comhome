@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { trackEvent } from "@/lib/analytics";
-import type { NeighborhoodCost } from "./CostComparisonCards";
+import { BASE_COMMUTE_MINUTES, type NeighborhoodCost } from "@/lib/costUtils";
 
 interface InsightCopyProps {
   neighborhoods: NeighborhoodCost[];
@@ -21,8 +21,8 @@ function buildInsightText(
   const transportDiff = n.monthlyTransportCost - currentTransportCost;
   const totalDiff = rentDiff + transportDiff;
 
-  const baseCommute = 60; // 기본 통근 시간 추정
-  const minutesSaved = (baseCommute - n.commuteMinutes) * 2 * 22 * 12;
+  const baseCommute = BASE_COMMUTE_MINUTES;
+  const minutesSaved = Math.max(0, (baseCommute - n.commuteMinutes) * 2 * 22 * 12);
   const annualHours = Math.round(minutesSaved / 60);
 
   const rentPart =

@@ -232,6 +232,16 @@ const SearchPage = () => {
       attempt_count: attemptCountRef.current,
     });
 
+    // 직접입력(좌표 없음)은 통근 계산 불가 → 안내 표시
+    if (company.source === "address" && company.latitude === null && company.longitude === null) {
+      toast({
+        title: "좌표를 찾을 수 없습니다",
+        description: "검색 결과에서 주소를 선택해주세요. 직접 입력은 정확한 분석이 어렵습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const outOfArea =
       company.source === "address"
         ? company.latitude !== null &&

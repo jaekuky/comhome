@@ -5,27 +5,18 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trackEvent } from "@/lib/analytics";
 import AffordabilityBadge from "@/components/cost/AffordabilityBadge";
+import ListingButton from "@/components/result/ListingButton";
 import { fetchLivingScore } from "@/lib/kakaoLocal";
+import { type NeighborhoodResult } from "@/types/neighborhood";
 
-export interface NeighborhoodResult {
-  id: string;
-  name: string;
-  district: string;
-  city: string;
-  avg_rent: number;
-  commute_minutes: number;
-  commute_route: string;
-  savings_amount: number;
-  rank: number;
-  latitude?: number | null;
-  longitude?: number | null;
-}
+export type { NeighborhoodResult };
 
 interface NeighborhoodCardProps {
   data: NeighborhoodResult;
   index: number;
   income?: number | null;
   onRequestIncomeInput?: () => void;
+  onBeforeListingNavigate?: () => void;
 }
 
 const LivingScoreStars = ({ lat, lng }: { lat: number; lng: number }) => {
@@ -63,9 +54,9 @@ const LivingScoreStars = ({ lat, lng }: { lat: number; lng: number }) => {
   );
 };
 
-const NeighborhoodCard = ({ data, index, income = null, onRequestIncomeInput }: NeighborhoodCardProps) => {
+const NeighborhoodCard = ({ data, index, income = null, onRequestIncomeInput, onBeforeListingNavigate }: NeighborhoodCardProps) => {
   const navigate = useNavigate();
-  const ref = useRef<HTMLButtonElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -80,8 +71,10 @@ const NeighborhoodCard = ({ data, index, income = null, onRequestIncomeInput }: 
   }, []);
 
   return (
-    <button
+    <div
       ref={ref}
+      role="button"
+      tabIndex={0}
       onClick={() => {
         trackEvent("neighborhood_clicked", { neighborhood_id: data.id, rank: data.rank });
         if (index >= 1) {
@@ -89,8 +82,18 @@ const NeighborhoodCard = ({ data, index, income = null, onRequestIncomeInput }: 
         }
         navigate(`/neighborhood/${data.id}`);
       }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          trackEvent("neighborhood_clicked", { neighborhood_id: data.id, rank: data.rank });
+          if (index >= 1) {
+            trackEvent("card_explored", { card_index: index, area_name: data.name });
+          }
+          navigate(`/neighborhood/${data.id}`);
+        }
+      }}
       aria-label={`${data.name} ${data.district} 통근 ${data.commute_minutes}분`}
-      className={`w-full rounded-2xl bg-card border border-border p-5 shadow-card hover:shadow-card-hover transition-all text-left ${
+      className={`w-full rounded-2xl bg-card border border-border p-5 shadow-card hover:shadow-card-hover transition-all text-left cursor-pointer ${
         visible ? "animate-peek-a-boo opacity-100" : "opacity-0"
       }`}
       style={{ animationDelay: `${index * 0.1}s` }}
@@ -138,7 +141,9 @@ const NeighborhoodCard = ({ data, index, income = null, onRequestIncomeInput }: 
       <p className="mt-1.5 text-[11px] text-muted-foreground">
         {data.commute_route}
       </p>
-    </button>
+
+      <ListingButton dongName={data.name} district={data.district} latitude={data.latitude} longitude={data.longitude} onBeforeNavigate={onBeforeListingNavigate} />
+    </div>
   );
 };
 

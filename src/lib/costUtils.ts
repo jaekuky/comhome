@@ -10,6 +10,8 @@ export interface NeighborhoodCost {
   monthlyTransportCost: number;
   /** 편도 통근 시간 (분) */
   commuteMinutes: number;
+  /** true면 교통비가 실제 ODsay 데이터 기반, false면 기본 추정값 */
+  isRealTransportCost: boolean;
 }
 
 /** 현재 통근 시간 기준 (분) — CostComparisonCards, InsightCopy에서 공통 사용 */
@@ -36,11 +38,8 @@ export function toNeighborhoodCost(
   // commuteResult가 있지만 totalFare=0이면 추정 데이터(isEstimated) → 기본 교통비 추정
   const DEFAULT_TRANSPORT_COST = 7; // 만원 (서울 평균 대중교통 월 비용 추정)
   const fare = commuteResult?.totalFare ?? 0;
-  const transportCost = commuteResult === undefined
-    ? DEFAULT_TRANSPORT_COST
-    : fare > 0
-      ? fareToMonthly(fare)
-      : DEFAULT_TRANSPORT_COST;
+  const hasRealFare = commuteResult !== undefined && fare > 0;
+  const transportCost = hasRealFare ? fareToMonthly(fare) : DEFAULT_TRANSPORT_COST;
 
   return {
     id: neighborhood.id,
@@ -49,5 +48,6 @@ export function toNeighborhoodCost(
     medianRent: medianRent ?? neighborhood.avg_rent,
     monthlyTransportCost: transportCost,
     commuteMinutes: commuteResult?.commuteMinutes ?? 0,
+    isRealTransportCost: hasRealFare,
   };
 }

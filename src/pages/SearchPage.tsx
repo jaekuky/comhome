@@ -144,8 +144,13 @@ const SearchPage = () => {
         return;
       }
 
-      const companyResults: SearchResult[] = (supabaseResult.data as Company[]).map((c) => ({
-        ...c,
+      const companyResults: SearchResult[] = (supabaseResult.data ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        address: c.address,
+        district: c.district,
+        latitude: c.latitude ?? null,
+        longitude: c.longitude ?? null,
         source: "company" as const,
       }));
 
@@ -221,10 +226,6 @@ const SearchPage = () => {
 
   const handleSelectCompany = (company: SearchResult, inputMethod: "autocomplete" | "quick_access" = "autocomplete") => {
     attemptCountRef.current += 1;
-    setSelectedCompany(company);
-    setQuery(company.name);
-    setResults([]);
-    setConfirmedId(company.id);
     trackEvent("company_selected", {
       company_id: company.id,
       company_name: company.name,
@@ -232,8 +233,10 @@ const SearchPage = () => {
       attempt_count: attemptCountRef.current,
     });
 
-    // 직접입력(좌표 없음)은 통근 계산 불가 → 안내 표시
+    // 직접입력(좌표 없음)은 통근 계산 불가 → 안내 표시, 선택 상태 설정하지 않음
     if (company.source === "address" && company.latitude === null && company.longitude === null) {
+      setQuery(company.name);
+      setResults([]);
       toast({
         title: "좌표를 찾을 수 없습니다",
         description: "검색 결과에서 주소를 선택해주세요. 직접 입력은 정확한 분석이 어렵습니다.",
@@ -242,11 +245,16 @@ const SearchPage = () => {
       return;
     }
 
+    setSelectedCompany(company);
+    setQuery(company.name);
+    setResults([]);
+    setConfirmedId(company.id);
+
     const outOfArea =
       company.source === "address"
-        ? company.latitude !== null &&
-          company.longitude !== null &&
-          !isMetroArea(company.latitude, company.longitude, company.address)
+        ? (typeof company.latitude === "number" &&
+           typeof company.longitude === "number" &&
+           !isMetroArea(company.latitude, company.longitude, company.address))
         : !company.district.match(/(구|시|군)$/);
 
     if (outOfArea) {
@@ -299,7 +307,15 @@ const SearchPage = () => {
       if (dbError) throw dbError;
 
       if (data && data.length > 0) {
-        const company = data[0] as Company;
+        const raw = data[0];
+        const company: Company = {
+          id: raw.id,
+          name: raw.name,
+          address: raw.address,
+          district: raw.district,
+          latitude: raw.latitude ?? null,
+          longitude: raw.longitude ?? null,
+        };
         setSelectedCompany(company);
         setConfirmedId(company.id);
         addRecentSearch(company);

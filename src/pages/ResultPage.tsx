@@ -182,7 +182,10 @@ const ResultPage = () => {
         return;
       }
 
-      const rows = data as RawRecommendedRow[];
+      const rows = (data ?? []).filter(
+        (r): r is RawRecommendedRow =>
+          r.neighborhoods !== null && typeof r.neighborhoods === "object" && "id" in r.neighborhoods,
+      );
 
       // 로딩 단계에서 calcCommuteTime으로 통근 시간 조회 ('default' → rush hour 가중치 미적용, 클라이언트 재계산)
       let commuteMap = new Map<string, CommuteResult>();
@@ -210,25 +213,27 @@ const ResultPage = () => {
         }
       }
 
-      const mapped: NeighborhoodResult[] = rows.map((r) => {
-        const od = commuteMap.get(r.neighborhoods.id);
-        const savings = r.savings_amount > 0
-          ? r.savings_amount
-          : Math.max(0, districtRefRent - r.neighborhoods.avg_rent);
-        return {
-          id: r.neighborhoods.id,
-          name: r.neighborhoods.name,
-          district: r.neighborhoods.district,
-          city: r.neighborhoods.city,
-          avg_rent: r.neighborhoods.avg_rent,
-          commute_minutes: od?.commuteMinutes ?? r.commute_minutes,
-          commute_route: od?.routeSummary ?? r.commute_route ?? "",
-          savings_amount: savings,
-          rank: r.rank,
-          latitude: r.neighborhoods.latitude,
-          longitude: r.neighborhoods.longitude,
-        };
-      });
+      const mapped: NeighborhoodResult[] = rows
+        .map((r) => {
+          const od = commuteMap.get(r.neighborhoods.id);
+          const savings = r.savings_amount > 0
+            ? r.savings_amount
+            : Math.max(0, districtRefRent - r.neighborhoods.avg_rent);
+          return {
+            id: r.neighborhoods.id,
+            name: r.neighborhoods.name,
+            district: r.neighborhoods.district,
+            city: r.neighborhoods.city,
+            avg_rent: r.neighborhoods.avg_rent,
+            commute_minutes: od?.commuteMinutes ?? r.commute_minutes,
+            commute_route: od?.routeSummary ?? r.commute_route ?? "",
+            savings_amount: savings,
+            rank: r.rank,
+            latitude: r.neighborhoods.latitude,
+            longitude: r.neighborhoods.longitude,
+          };
+        })
+        .filter((r) => r.commute_minutes <= maxMinutes);
 
       // 히트맵용 데이터 세팅
       const heatNeighborhoods: HeatmapNeighborhood[] = rows.flatMap((r) => {
@@ -258,6 +263,9 @@ const ResultPage = () => {
       setIsApiReady(true);
     } else if (company.latitude !== null && company.longitude !== null) {
       // 미등록 주소: 인근 동네 ODsay 실시간 계산
+      const companyLat = company.latitude;
+      const companyLng = company.longitude;
+
       const { data: neighborhoods } = await supabase
         .from("neighborhoods")
         .select("id, name, district, city, avg_rent, latitude, longitude");
@@ -272,7 +280,8 @@ const ResultPage = () => {
       const MIN_CANDIDATES = 5;
       const RADIUS_STEPS_KM = [20, 30, 40, 60];
       const validNeighborhoods = neighborhoods.filter(
-        (n) => n.latitude !== null && n.longitude !== null,
+        (n): n is typeof n & { latitude: number; longitude: number } =>
+          n.latitude !== null && n.longitude !== null,
       );
 
       let candidates: typeof validNeighborhoods = [];
@@ -281,10 +290,10 @@ const ResultPage = () => {
           .filter(
             (n) =>
               haversineKm(
-                company.latitude as number,
-                company.longitude as number,
-                n.latitude as number,
-                n.longitude as number,
+                companyLat,
+                companyLng,
+                n.latitude,
+                n.longitude,
               ) < radius,
           )
           .slice(0, 20);
@@ -363,7 +372,7 @@ const ResultPage = () => {
       setIsApiReady(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [company, setCommuteResults]);
+  }, [company, setCommuteResults, maxCommute]);
 
   useEffect(() => {
     if (company?.id) {

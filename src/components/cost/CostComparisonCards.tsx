@@ -126,8 +126,8 @@ const CostComparisonCards = ({
         className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-hide pb-2"
         style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
       >
-        {neighborhoods.map((n, i) => {
-          const diff = diffs[i];
+        {neighborhoods.map((n, idx) => {
+          const diff = diffs[idx];
           const isSaving = diff.totalDiff < 0;
           return (
             <Card
@@ -149,11 +149,13 @@ const CostComparisonCards = ({
                     label="월세 차이"
                     value={formatDiff(diff.rentDiff)}
                     isPositive={diff.rentDiff <= 0}
+                    isEstimated={false}
                   />
                   <CostRow
                     label="교통비 차이"
                     value={formatDiff(diff.transportDiff)}
                     isPositive={diff.transportDiff <= 0}
+                    isEstimated={!n.isRealTransportCost}
                   />
                   <div className="border-t border-border pt-2.5">
                     <CostRow
@@ -161,6 +163,7 @@ const CostComparisonCards = ({
                       value={formatDiff(diff.totalDiff)}
                       isPositive={isSaving}
                       bold
+                      isEstimated={!n.isRealTransportCost}
                     />
                   </div>
                 </div>
@@ -242,11 +245,13 @@ function CostRow({
   value,
   isPositive,
   bold,
+  isEstimated = true,
 }: {
   label: string;
   value: string;
   isPositive: boolean;
   bold?: boolean;
+  isEstimated?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between">
@@ -266,12 +271,14 @@ function CostRow({
         >
           {value}
         </span>
-        <Badge
-          variant="outline"
-          className="text-[9px] px-1 py-0 text-muted-foreground"
-        >
-          추정
-        </Badge>
+        {isEstimated && (
+          <Badge
+            variant="outline"
+            className="text-[9px] px-1 py-0 text-muted-foreground"
+          >
+            추정
+          </Badge>
+        )}
       </div>
     </div>
   );

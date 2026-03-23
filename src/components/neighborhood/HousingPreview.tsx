@@ -1,14 +1,16 @@
 import { useNavigate } from "react-router-dom";
-import { Home, MapPin, TrendingDown, TrendingUp, BarChart3 } from "lucide-react";
+import { Home, Layers, TrendingDown, TrendingUp, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface HousingListing {
-  id: string;
-  type: string;
+  id: number;
+  housing_type: string;
+  building_name: string | null;
   deposit: number;
   monthly_rent: number;
   area_sqm: number;
-  distance_to_station: number;
+  floor: number | null;
+  deal_date: string;
 }
 
 interface RentStats {
@@ -43,6 +45,11 @@ function housingTypeLabel(type: string): string {
     case "mixed": return "전체";
     default: return type;
   }
+}
+
+function formatDealDate(date: string): string {
+  const d = new Date(date);
+  return `${d.getFullYear()}.${(d.getMonth() + 1).toString().padStart(2, "0")}`;
 }
 
 const RentStatsCard = ({ stat }: { stat: RentStats }) => (
@@ -100,37 +107,49 @@ const HousingPreview = ({ neighborhoodId, neighborhoodName, listings, rentStats,
     <div>
       <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
         <Home className="h-4 w-4 text-primary" />
-        이 동네 매물 보기
+        이 동네 실거래 내역
       </h3>
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">매물 정보를 불러오는 중...</p>
+        <p className="text-sm text-muted-foreground">실거래 정보를 불러오는 중...</p>
       ) : preview.length > 0 ? (
         <>
+          <div className="flex items-center gap-1.5 mb-3 text-[11px] text-muted-foreground">
+            <BarChart3 className="h-3 w-3" />
+            <span>국토교통부 실거래가 기준</span>
+          </div>
           <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory">
             {preview.map((listing) => (
               <div
                 key={listing.id}
                 className="min-w-[200px] snap-start rounded-xl border border-border bg-card p-4 shadow-card"
               >
-                {/* Placeholder image */}
-                <div className="h-24 rounded-lg bg-muted mb-3 flex items-center justify-center">
-                  <Home className="h-8 w-8 text-muted-foreground/40" />
+                <div className="flex items-center justify-between mb-2">
+                  <span className="inline-block text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                    {housingTypeLabel(listing.housing_type)}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {formatDealDate(listing.deal_date)}
+                  </span>
                 </div>
-                <span className="inline-block text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground mb-2">
-                  {listing.type}
-                </span>
                 <p className="text-sm font-bold text-foreground">
                   {listing.deposit}/{listing.monthly_rent}만
                 </p>
                 <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground">
                   <span>{listing.area_sqm}㎡</span>
-                  <span>·</span>
-                  <span className="flex items-center gap-0.5">
-                    <MapPin className="h-3 w-3" />
-                    역 {listing.distance_to_station}분
-                  </span>
+                  {listing.floor && (
+                    <>
+                      <span>·</span>
+                      <span className="flex items-center gap-0.5">
+                        <Layers className="h-3 w-3" />
+                        {listing.floor}층
+                      </span>
+                    </>
+                  )}
                 </div>
+                {listing.building_name && (
+                  <p className="mt-1 text-[10px] text-muted-foreground truncate">{listing.building_name}</p>
+                )}
               </div>
             ))}
           </div>
@@ -140,7 +159,7 @@ const HousingPreview = ({ neighborhoodId, neighborhoodName, listings, rentStats,
             className="w-full mt-3"
             onClick={() => navigate(`/housing/${neighborhoodId}`)}
           >
-            전체 매물 보기 ({listings.length}건)
+            전체 실거래 내역 보기 ({listings.length}건)
           </Button>
         </>
       ) : rentStats && rentStats.length > 0 ? (
@@ -167,7 +186,7 @@ const HousingPreview = ({ neighborhoodId, neighborhoodName, listings, rentStats,
           )}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">현재 등록된 매물이 없습니다</p>
+        <p className="text-sm text-muted-foreground">현재 등록된 실거래 내역이 없습니다</p>
       )}
     </div>
   );

@@ -1,36 +1,50 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Home, MapPin, Layers } from "lucide-react";
+import { ArrowLeft, Home, Layers, Calendar, Building2, BarChart3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { type Tables } from "@/integrations/supabase/types";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import ListingButton from "@/components/result/ListingButton";
+import { escapeLikePattern } from "@/lib/utils";
 
-interface Listing {
-  id: string;
-  type: string;
-  deposit: number;
-  monthly_rent: number;
-  area_sqm: number;
-  floor: number;
-  distance_to_station: number;
-  description: string | null;
+type RentTransaction = Pick<
+  Tables<"rent_transactions">,
+  "id" | "housing_type" | "building_name" | "area_sqm" | "floor" | "deposit" | "monthly_rent" | "build_year" | "deal_date" | "contract_type"
+>;
+
+function housingTypeLabel(type: string): string {
+  switch (type) {
+    case "villa": return "빌라/연립";
+    case "officetel": return "오피스텔";
+    default: return type;
+  }
 }
 
-const typeFilters = ["전체", "원룸", "투룸"] as const;
+function formatDealDate(date: string): string {
+  const d = new Date(date);
+  return `${d.getFullYear()}.${(d.getMonth() + 1).toString().padStart(2, "0")}.${d.getDate().toString().padStart(2, "0")}`;
+}
+
+const typeFilters = ["전체", "빌라/연립", "오피스텔"] as const;
+const typeFilterMap: Record<string, string> = { "빌라/연립": "villa", "오피스텔": "officetel" };
 
 const HousingPage = () => {
   const { neighborhoodId } = useParams();
   const navigate = useNavigate();
 
-  const [listings, setListings] = useState<Listing[]>([]);
+  const [transactions, setTransactions] = useState<RentTransaction[]>([]);
   const [neighborhoodName, setNeighborhoodName] = useState("");
+  const [neighborhoodDistrict, setNeighborhoodDistrict] = useState("");
+  const [neighborhoodLat, setNeighborhoodLat] = useState<number | null>(null);
+  const [neighborhoodLng, setNeighborhoodLng] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [depositRange, setDepositRange] = useState([100, 5000]);
   const [rentRange, setRentRange] = useState([20, 100]);
   const [typeFilter, setTypeFilter] = useState<string>("전체");
-  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [selectedTx, setSelectedTx] = useState<RentTransaction | null>(null);
 
   useEffect(() => {
     if (!neighborhoodId) return;
@@ -45,15 +59,70 @@ const HousingPage = () => {
       setLoading(true);
       setError(null);
       try {
-        const [listRes, nbRes] = await Promise.all([
-          supabase.from("housing_listings").select("*").eq("neighborhood_id", neighborhoodId),
-          supabase.from("neighborhoods").select("name").eq("id", neighborhoodId).single(),
-        ]);
+        // 1. 동네 정보 조회
+        const { data: nb, error: nbErr } = await supabase
+          .from("neighborhoods")
+          .select("name, district, latitude, longitude, region_code, legal_dong_name")
+          .eq("id", neighborhoodId)
+          .single();
+
         if (cancelled) return;
-        if (listRes.error) throw listRes.error;
-        if (nbRes.error) throw nbRes.error;
-        if (listRes.data) setListings(listRes.data as Listing[]);
-        if (nbRes.data) setNeighborhoodName(nbRes.data.name);
+        if (nbErr) throw nbErr;
+        if (!nb) throw new Error("동네 정보를 찾을 수 없습니다");
+
+        setNeighborhoodName(nb.name);
+        setNeighborhoodDistrict(nb.district);
+        setNeighborhoodLat(nb.latitude);
+        setNeighborhoodLng(nb.longitude);
+
+        // 2. rent_transactions에서 해당 동네 실거래 데이터 조회
+        const legalDong = nb.legal_dong_name;
+        let txQuery = supabase
+          .from("rent_transactions")
+          .select("id, housing_type, building_name, area_sqm, floor, deposit, monthly_rent, build_year, deal_date, contract_type")
+          .order("deal_date", { ascending: false })
+          .limit(100);
+
+        if (legalDong) {
+          txQuery = txQuery.like("dong_name", `${escapeLikePattern(legalDong)}%`);
+        } else {
+          const dongNameVariants = [nb.name, nb.name.endsWith("동") ? nb.name : nb.name + "동"];
+          txQuery = txQuery.in("dong_name", dongNameVariants);
+        }
+
+        if (nb.region_code) {
+          txQuery = txQuery.eq("region_code", nb.region_code);
+        }
+
+        const { data: txData, error: txErr } = await txQuery;
+        if (cancelled) return;
+        if (txErr) throw txErr;
+
+        // 3. rent_transactions가 비어있으면 기존 housing_listings fallback
+        if (!txData || txData.length === 0) {
+          const { data: legacyData } = await supabase
+            .from("housing_listings")
+            .select("*")
+            .eq("neighborhood_id", neighborhoodId);
+
+          if (cancelled) return;
+          if (legacyData && legacyData.length > 0) {
+            setTransactions(legacyData.map((l, idx) => ({
+              id: idx + 1,
+              housing_type: l.type === "원룸" || l.type === "투룸" ? "villa" : "officetel",
+              building_name: l.description,
+              area_sqm: l.area_sqm,
+              floor: l.floor,
+              deposit: l.deposit,
+              monthly_rent: l.monthly_rent,
+              build_year: null,
+              deal_date: l.created_at,
+              contract_type: null,
+            })));
+          }
+        } else {
+          setTransactions(txData);
+        }
       } catch {
         if (!cancelled) setError("데이터를 불러오는 중 오류가 발생했습니다");
       } finally {
@@ -65,13 +134,16 @@ const HousingPage = () => {
   }, [neighborhoodId]);
 
   const filtered = useMemo(() => {
-    return listings.filter((l) => {
-      if (typeFilter !== "전체" && l.type !== typeFilter) return false;
-      if (l.deposit < depositRange[0] || l.deposit > depositRange[1]) return false;
-      if (l.monthly_rent < rentRange[0] || l.monthly_rent > rentRange[1]) return false;
+    return transactions.filter((t) => {
+      if (typeFilter !== "전체") {
+        const mappedType = typeFilterMap[typeFilter];
+        if (mappedType && t.housing_type !== mappedType) return false;
+      }
+      if (t.deposit < depositRange[0] || t.deposit > depositRange[1]) return false;
+      if (t.monthly_rent < rentRange[0] || t.monthly_rent > rentRange[1]) return false;
       return true;
     });
-  }, [listings, typeFilter, depositRange, rentRange]);
+  }, [transactions, typeFilter, depositRange, rentRange]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -81,9 +153,15 @@ const HousingPage = () => {
           뒤로가기
         </button>
 
-        <h1 className="text-xl font-bold text-foreground">
-          {neighborhoodName || "동네"} 매물
-        </h1>
+        <div>
+          <h1 className="text-xl font-bold text-foreground">
+            {neighborhoodName || "동네"} 실거래 내역
+          </h1>
+          <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground">
+            <BarChart3 className="h-3 w-3" />
+            <span>국토교통부 실거래가 기준 · 1인 가구 (20~33㎡)</span>
+          </div>
+        </div>
 
         {/* Filters */}
         <div className="space-y-4 rounded-xl border border-border bg-card p-4">
@@ -111,13 +189,7 @@ const HousingPage = () => {
               <span>보증금</span>
               <span className="font-medium text-foreground">{depositRange[0]}만 ~ {depositRange[1]}만</span>
             </div>
-            <Slider
-              min={100}
-              max={5000}
-              step={100}
-              value={depositRange}
-              onValueChange={setDepositRange}
-            />
+            <Slider min={100} max={5000} step={100} value={depositRange} onValueChange={setDepositRange} />
           </div>
 
           {/* Rent slider */}
@@ -126,20 +198,14 @@ const HousingPage = () => {
               <span>월세</span>
               <span className="font-medium text-foreground">{rentRange[0]}만 ~ {rentRange[1]}만</span>
             </div>
-            <Slider
-              min={20}
-              max={100}
-              step={5}
-              value={rentRange}
-              onValueChange={setRentRange}
-            />
+            <Slider min={20} max={100} step={5} value={rentRange} onValueChange={setRentRange} />
           </div>
         </div>
 
         {/* Results count */}
-        <p className="text-xs text-muted-foreground">{filtered.length}건의 매물</p>
+        <p className="text-xs text-muted-foreground">{filtered.length}건의 실거래</p>
 
-        {/* Listing cards */}
+        {/* Transaction cards */}
         {error ? (
           <div className="py-12 text-center">
             <p className="text-sm text-destructive">{error}</p>
@@ -148,48 +214,59 @@ const HousingPage = () => {
         ) : loading ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />
+              <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-12 text-center">
             <Home className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground">조건에 맞는 매물이 없어요</p>
+            <p className="text-sm text-muted-foreground">조건에 맞는 실거래 내역이 없어요</p>
             <p className="text-xs text-muted-foreground mt-1">필터 조건을 변경해보세요</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {filtered.map((listing) => (
+            {filtered.map((tx) => (
               <button
-                key={listing.id}
+                key={tx.id}
                 type="button"
-                onClick={() => setSelectedListing(listing)}
-                className="w-full rounded-xl border border-border bg-card p-4 shadow-card hover:shadow-card-hover transition-all text-left flex gap-4"
+                onClick={() => setSelectedTx(tx)}
+                className="w-full rounded-xl border border-border bg-card p-4 shadow-card hover:shadow-card-hover transition-all text-left"
               >
-                {/* Placeholder image */}
-                <div className="h-20 w-20 shrink-0 rounded-lg bg-muted flex items-center justify-center">
-                  <Home className="h-6 w-6 text-muted-foreground/40" />
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    {housingTypeLabel(tx.housing_type)}
+                  </Badge>
+                  {tx.contract_type && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                      {tx.contract_type}
+                    </Badge>
+                  )}
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    {formatDealDate(tx.deal_date)}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">{listing.type}</Badge>
-                  </div>
-                  <p className="text-base font-bold text-foreground">
-                    {listing.deposit}/{listing.monthly_rent}만
-                  </p>
-                  <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                    <span>{listing.area_sqm}㎡</span>
+                <p className="text-base font-bold text-foreground">
+                  {tx.deposit}/{tx.monthly_rent}만
+                </p>
+                <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+                  <span>{tx.area_sqm}㎡</span>
+                  {tx.floor && (
                     <span className="flex items-center gap-0.5">
                       <Layers className="h-3 w-3" />
-                      {listing.floor}층
+                      {tx.floor}층
                     </span>
+                  )}
+                  {tx.building_name && (
                     <span className="flex items-center gap-0.5">
-                      <MapPin className="h-3 w-3" />
-                      역 {listing.distance_to_station}분
+                      <Building2 className="h-3 w-3" />
+                      {tx.building_name}
                     </span>
-                  </div>
-                  {listing.description && (
-                    <p className="mt-1 text-[11px] text-muted-foreground truncate">{listing.description}</p>
+                  )}
+                  {tx.build_year && (
+                    <span className="flex items-center gap-0.5">
+                      <Calendar className="h-3 w-3" />
+                      {tx.build_year}년
+                    </span>
                   )}
                 </div>
               </button>
@@ -199,30 +276,35 @@ const HousingPage = () => {
       </div>
 
       {/* Detail dialog */}
-      <Dialog open={!!selectedListing} onOpenChange={() => setSelectedListing(null)}>
+      <Dialog open={!!selectedTx} onOpenChange={() => setSelectedTx(null)}>
         <DialogContent className="max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>매물 상세 정보</DialogTitle>
+            <DialogTitle>실거래 상세 정보</DialogTitle>
             <DialogDescription>
-              이 기능은 곧 오픈 예정입니다
+              국토교통부 실거래가 데이터 기반
             </DialogDescription>
           </DialogHeader>
-          {selectedListing && (
+          {selectedTx && (
             <div className="space-y-3">
-              <div className="h-40 rounded-lg bg-muted flex items-center justify-center">
-                <Home className="h-10 w-10 text-muted-foreground/40" />
-              </div>
               <p className="text-lg font-bold text-foreground">
-                보증금 {selectedListing.deposit}만 / 월세 {selectedListing.monthly_rent}만
+                보증금 {selectedTx.deposit}만 / 월세 {selectedTx.monthly_rent}만
               </p>
               <div className="text-sm text-muted-foreground space-y-1">
-                <p>유형: {selectedListing.type} · {selectedListing.area_sqm}㎡ · {selectedListing.floor}층</p>
-                <p>역까지 도보 {selectedListing.distance_to_station}분</p>
-                {selectedListing.description && <p>{selectedListing.description}</p>}
+                <p>유형: {housingTypeLabel(selectedTx.housing_type)} · {selectedTx.area_sqm}㎡{selectedTx.floor ? ` · ${selectedTx.floor}층` : ""}</p>
+                {selectedTx.building_name && <p>건물명: {selectedTx.building_name}</p>}
+                {selectedTx.build_year && <p>건축년도: {selectedTx.build_year}년</p>}
+                <p>계약일: {formatDealDate(selectedTx.deal_date)}{selectedTx.contract_type ? ` (${selectedTx.contract_type})` : ""}</p>
               </div>
-              <div className="rounded-lg bg-muted p-4 text-center">
-                <p className="text-sm font-medium text-foreground">🚀 상세 정보 곧 오픈!</p>
-                <p className="text-xs text-muted-foreground mt-1">실제 매물 연결 기능을 준비 중입니다</p>
+              <div className="rounded-lg border border-border p-4 space-y-2">
+                <p className="text-sm font-medium text-foreground">외부 플랫폼에서 매물 검색</p>
+                <p className="text-xs text-muted-foreground">{neighborhoodName} 주변 현재 매물을 확인해보세요</p>
+                <ListingButton
+                  dongName={neighborhoodName}
+                  district={neighborhoodDistrict}
+                  latitude={neighborhoodLat}
+                  longitude={neighborhoodLng}
+                  onBeforeNavigate={() => setSelectedTx(null)}
+                />
               </div>
             </div>
           )}

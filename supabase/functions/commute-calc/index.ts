@@ -104,7 +104,7 @@ async function fetchFromOdsay(
       transferCount,
       walkMinutes,
       totalFare: payment,
-      isEstimated: true,
+      isEstimated: false,
     }
   } finally {
     clearTimeout(timeout)

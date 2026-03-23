@@ -138,9 +138,11 @@ const NeighborhoodCard = ({ data, index, income = null, onRequestIncomeInput, on
         </p>
       )}
 
-      <p className="mt-1.5 text-[11px] text-muted-foreground">
-        {data.commute_route}
-      </p>
+      {data.commute_route && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          {data.commute_route}
+        </p>
+      )}
 
       <ListingButton dongName={data.name} district={data.district} latitude={data.latitude} longitude={data.longitude} onBeforeNavigate={onBeforeListingNavigate} />
     </div>

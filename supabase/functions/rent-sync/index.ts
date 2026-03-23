@@ -25,9 +25,30 @@ const AREA_MAX = 33
 // ----------------------------------------------------------------
 interface RentRecord {
   dong: string
-  rent: number     // 만원
-  deposit: number  // 만원
-  area: number     // ㎡
+  rent: number        // 만원
+  deposit: number     // 만원
+  area: number        // ㎡
+  floor: number       // 층
+  buildingName: string // 건물명
+  buildYear: number   // 건축년도
+  dealDate: string    // YYYY-MM-DD
+  contractType: string // 신규/갱신
+}
+
+interface RentTransactionRow {
+  region_code: string
+  dong_name: string
+  housing_type: "villa" | "officetel"
+  building_name: string | null
+  area_sqm: number
+  floor: number | null
+  deposit: number
+  monthly_rent: number
+  build_year: number | null
+  deal_date: string
+  base_ym: string
+  contract_type: string | null
+  collected_at: string
 }
 
 interface DongStats {
@@ -112,7 +133,7 @@ async function fetchMolitXml(
 // apis.data.go.kr/1613000 신규 엔드포인트 영문 필드:
 //   excluUseAr(전용면적), umdNm(법정동), monthlyRent(월세금액), deposit(보증금액)
 // ----------------------------------------------------------------
-function parseVillaRent(xml: string): RentRecord[] {
+function parseVillaRent(xml: string, dealYmd: string): RentRecord[] {
   const records: RentRecord[] = []
   for (const item of parseItems(xml)) {
     const area = parseFloat(getTagValue(item, "excluUseAr")) || 0
@@ -124,7 +145,20 @@ function parseVillaRent(xml: string): RentRecord[] {
 
     // 월세 = 0 이면 전세 계약 → 스킵
     if (!dong || rent === 0) continue
-    records.push({ dong, rent, deposit, area })
+
+    const floor = parseInt(getTagValue(item, "floor"), 10) || 0
+    const buildingName = getTagValue(item, "mhouseNm")
+    const buildYear = parseInt(getTagValue(item, "buildYear"), 10) || 0
+    const dealYear = getTagValue(item, "dealYear") || dealYmd.slice(0, 4)
+    const dealMonth = (getTagValue(item, "dealMonth") || dealYmd.slice(4, 6)).padStart(2, "0")
+    const dealDay = (getTagValue(item, "dealDay") || "1").padStart(2, "0")
+    const contractType = getTagValue(item, "contractType")
+
+    records.push({
+      dong, rent, deposit, area, floor, buildingName, buildYear,
+      dealDate: `${dealYear}-${dealMonth}-${dealDay}`,
+      contractType,
+    })
   }
   return records
 }
@@ -133,7 +167,7 @@ function parseVillaRent(xml: string): RentRecord[] {
 // XML 파싱 — 오피스텔 전월세 (/getRTMSDataSvcOffiRent)
 // 실제 XML 필드: excluUseAr, umdNm, monthlyRent, deposit
 // ----------------------------------------------------------------
-function parseOfficetelRent(xml: string): RentRecord[] {
+function parseOfficetelRent(xml: string, dealYmd: string): RentRecord[] {
   const records: RentRecord[] = []
   for (const item of parseItems(xml)) {
     const area = parseFloat(getTagValue(item, "excluUseAr")) || 0
@@ -145,7 +179,20 @@ function parseOfficetelRent(xml: string): RentRecord[] {
 
     // 월세 = 0 이면 전세 계약 → 스킵
     if (!dong || rent === 0) continue
-    records.push({ dong, rent, deposit, area })
+
+    const floor = parseInt(getTagValue(item, "floor"), 10) || 0
+    const buildingName = getTagValue(item, "offiNm") || getTagValue(item, "mhouseNm")
+    const buildYear = parseInt(getTagValue(item, "buildYear"), 10) || 0
+    const dealYear = getTagValue(item, "dealYear") || dealYmd.slice(0, 4)
+    const dealMonth = (getTagValue(item, "dealMonth") || dealYmd.slice(4, 6)).padStart(2, "0")
+    const dealDay = (getTagValue(item, "dealDay") || "1").padStart(2, "0")
+    const contractType = getTagValue(item, "contractType")
+
+    records.push({
+      dong, rent, deposit, area, floor, buildingName, buildYear,
+      dealDate: `${dealYear}-${dealMonth}-${dealDay}`,
+      contractType,
+    })
   }
   return records
 }
@@ -199,6 +246,33 @@ function computeDongStats(
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100
+}
+
+// ----------------------------------------------------------------
+// 개별 거래 레코드 변환
+// ----------------------------------------------------------------
+function toTransactionRows(
+  records: RentRecord[],
+  regionCode: string,
+  housingType: "villa" | "officetel",
+  baseYm: string,
+): RentTransactionRow[] {
+  const now = new Date().toISOString()
+  return records.map((r) => ({
+    region_code: regionCode,
+    dong_name: r.dong,
+    housing_type: housingType,
+    building_name: r.buildingName || null,
+    area_sqm: r.area,
+    floor: r.floor || null,
+    deposit: r.deposit,
+    monthly_rent: r.rent,
+    build_year: r.buildYear || null,
+    deal_date: r.dealDate,
+    base_ym: baseYm,
+    contract_type: r.contractType || null,
+    collected_at: now,
+  }))
 }
 
 // ----------------------------------------------------------------
@@ -274,7 +348,7 @@ Deno.serve(async (req) => {
         lawdCd,
         dealYmd,
       )
-      villaRecords = parseVillaRent(xml)
+      villaRecords = parseVillaRent(xml, dealYmd)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       errors.push(`[${lawdCd}] 연립다세대 API 오류: ${msg}`)
@@ -289,7 +363,7 @@ Deno.serve(async (req) => {
         lawdCd,
         dealYmd,
       )
-      officetelRecords = parseOfficetelRent(xml)
+      officetelRecords = parseOfficetelRent(xml, dealYmd)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       errors.push(`[${lawdCd}] 오피스텔 API 오류: ${msg}`)
@@ -316,7 +390,37 @@ Deno.serve(async (req) => {
       continue
     }
 
-    // ── UPSERT ─────────────────────────────────────────────────
+    // ── 개별 거래 레코드 UPSERT → rent_transactions ─────────────
+    const txRowsRaw: RentTransactionRow[] = [
+      ...toTransactionRows(villaRecords, lawdCd, "villa", dealYmd),
+      ...toTransactionRows(officetelRecords, lawdCd, "officetel", dealYmd),
+    ]
+
+    // 동일 unique key 중복 제거 (PostgreSQL은 같은 배치 내 중복 upsert 불가)
+    const txDedup = new Map<string, RentTransactionRow>()
+    for (const row of txRowsRaw) {
+      const key = [
+        row.region_code, row.dong_name, row.housing_type,
+        row.building_name ?? "", String(row.area_sqm),
+        String(row.floor ?? ""), String(row.deposit),
+        String(row.monthly_rent), row.deal_date,
+      ].join("|")
+      txDedup.set(key, row)
+    }
+    const txRows = Array.from(txDedup.values())
+
+    if (txRows.length > 0) {
+      const { error: txError } = await supabase
+        .from("rent_transactions")
+        .upsert(txRows, {
+          onConflict: "region_code,dong_name,housing_type,building_name,area_sqm,floor,deposit,monthly_rent,deal_date",
+        })
+      if (txError) {
+        errors.push(`[${lawdCd}] rent_transactions UPSERT 오류: ${txError.message}`)
+      }
+    }
+
+    // ── 통계 집계 UPSERT → rent_stats ────────────────────────────
     const { error: upsertError } = await supabase
       .from("rent_stats")
       .upsert(rows, {

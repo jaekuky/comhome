@@ -14,6 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      commute_cache: {
+        Row: {
+          id: string
+          company_lat: number
+          company_lng: number
+          neighborhood_id: string
+          commute_minutes: number
+          route_summary: string
+          transfer_count: number
+          walk_minutes: number
+          total_fare: number
+          cached_at: string
+          api_provider: string
+        }
+        Insert: {
+          id?: string
+          company_lat: number
+          company_lng: number
+          neighborhood_id: string
+          commute_minutes: number
+          route_summary?: string
+          transfer_count?: number
+          walk_minutes?: number
+          total_fare?: number
+          cached_at?: string
+          api_provider?: string
+        }
+        Update: {
+          id?: string
+          company_lat?: number
+          company_lng?: number
+          neighborhood_id?: string
+          commute_minutes?: number
+          route_summary?: string
+          transfer_count?: number
+          walk_minutes?: number
+          total_fare?: number
+          cached_at?: string
+          api_provider?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commute_cache_neighborhood_id_fkey"
+            columns: ["neighborhood_id"]
+            isOneToOne: false
+            referencedRelation: "neighborhoods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       companies: {
         Row: {
           address: string
@@ -99,9 +149,11 @@ export type Database = {
           district: string
           id: string
           latitude: number | null
+          legal_dong_name: string | null
           longitude: number | null
           name: string
           transit_lines: Json | null
+          region_code: string | null
         }
         Insert: {
           avg_rent?: number
@@ -110,9 +162,11 @@ export type Database = {
           district: string
           id?: string
           latitude?: number | null
+          legal_dong_name?: string | null
           longitude?: number | null
           name: string
           transit_lines?: Json | null
+          region_code?: string | null
         }
         Update: {
           avg_rent?: number
@@ -121,9 +175,62 @@ export type Database = {
           district?: string
           id?: string
           latitude?: number | null
+          legal_dong_name?: string | null
           longitude?: number | null
           name?: string
           transit_lines?: Json | null
+          region_code?: string | null
+        }
+        Relationships: []
+      }
+      rent_transactions: {
+        Row: {
+          id: number
+          region_code: string
+          dong_name: string
+          housing_type: "villa" | "officetel"
+          building_name: string | null
+          area_sqm: number
+          floor: number | null
+          deposit: number
+          monthly_rent: number
+          build_year: number | null
+          deal_date: string
+          base_ym: string
+          contract_type: string | null
+          collected_at: string | null
+        }
+        Insert: {
+          id?: number
+          region_code: string
+          dong_name: string
+          housing_type: "villa" | "officetel"
+          building_name?: string | null
+          area_sqm: number
+          floor?: number | null
+          deposit: number
+          monthly_rent: number
+          build_year?: number | null
+          deal_date: string
+          base_ym: string
+          contract_type?: string | null
+          collected_at?: string | null
+        }
+        Update: {
+          id?: number
+          region_code?: string
+          dong_name?: string
+          housing_type?: "villa" | "officetel"
+          building_name?: string | null
+          area_sqm?: number
+          floor?: number | null
+          deposit?: number
+          monthly_rent?: number
+          build_year?: number | null
+          deal_date?: string
+          base_ym?: string
+          contract_type?: string | null
+          collected_at?: string | null
         }
         Relationships: []
       }
@@ -132,7 +239,7 @@ export type Database = {
           id: number
           region_code: string
           dong_name: string
-          housing_type: string
+          housing_type: "villa" | "officetel" | "mixed"
           base_ym: string
           avg_rent: number | null
           median_rent: number | null
@@ -146,7 +253,7 @@ export type Database = {
           id?: number
           region_code: string
           dong_name: string
-          housing_type: string
+          housing_type: "villa" | "officetel" | "mixed"
           base_ym: string
           avg_rent?: number | null
           median_rent?: number | null
@@ -160,7 +267,7 @@ export type Database = {
           id?: number
           region_code?: string
           dong_name?: string
-          housing_type?: string
+          housing_type?: "villa" | "officetel" | "mixed"
           base_ym?: string
           avg_rent?: number | null
           median_rent?: number | null

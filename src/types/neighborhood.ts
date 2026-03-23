@@ -5,7 +5,7 @@ export interface NeighborhoodResult {
   city: string;
   avg_rent: number;
   commute_minutes: number;
-  commute_route: string;
+  commute_route?: string;
   savings_amount: number;
   rank: number;
   latitude?: number | null;

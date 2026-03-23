@@ -8,6 +8,7 @@ import { type Tables } from "@/integrations/supabase/types";
 import { useSearchStore } from "@/stores/searchStore";
 import { type NeighborhoodResult } from "@/types/neighborhood";
 import { trackEvent } from "@/lib/analytics";
+import { escapeLikePattern } from "@/lib/utils";
 import { toNeighborhoodCost, fareToMonthly } from "@/lib/costUtils";
 import { calcCommuteTime, type CommuteResult } from "@/lib/commuteService";
 import CommuteTimeline from "@/components/neighborhood/CommuteTimeline";
@@ -20,16 +21,10 @@ import CostComparisonCards from "@/components/cost/CostComparisonCards";
 import InsightCopy from "@/components/cost/InsightCopy";
 import AffordabilityGauge from "@/components/cost/AffordabilityGauge";
 
-interface HousingListing {
-  id: string;
-  type: string;
-  deposit: number;
-  monthly_rent: number;
-  area_sqm: number;
-  floor: number;
-  distance_to_station: number;
-  description: string | null;
-}
+type HousingListing = Pick<
+  Tables<"rent_transactions">,
+  "id" | "housing_type" | "building_name" | "deposit" | "monthly_rent" | "area_sqm" | "floor" | "deal_date"
+>;
 
 const PopularBadge = () => (
   <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -41,7 +36,7 @@ const PopularBadge = () => (
 const NeighborhoodPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { selectedCompany, commuteResults } = useSearchStore();
+  const { selectedCompany, commuteResults, setCommuteResults } = useSearchStore();
 
   const [neighborhood, setNeighborhood] = useState<Tables<"neighborhoods"> | null>(null);
   const [recommendation, setRecommendation] = useState<Tables<"recommended_neighborhoods"> | null>(null);
@@ -89,13 +84,15 @@ const NeighborhoodPage = () => {
         if (match.totalFare > 0) {
           setTransportCost(fareToMonthly(match.totalFare));
         }
+        // store에 공유하여 다른 페이지에서 중복 API 호출 방지
+        setCommuteResults([...commuteResults, match]);
       }
       setCommuteFetched(true);
     }).catch(() => {
       if (!cancelled) setCommuteFetched(true);
     });
     return () => { cancelled = true; };
-  }, [id, commuteResults, selectedCompany]);
+  }, [id, commuteResults, selectedCompany, setCommuteResults]);
 
   // NeighborhoodCost 변환 (단일 동네)
   const neighborhoodCosts = useMemo(() => {
@@ -119,9 +116,8 @@ const NeighborhoodPage = () => {
         const isValidUUID = (str: string) =>
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
-        const [nbRes, listRes, recRes] = await Promise.all([
+        const [nbRes, recRes] = await Promise.all([
           supabase.from("neighborhoods").select("*").eq("id", id).single(),
-          supabase.from("housing_listings").select("*").eq("neighborhood_id", id).limit(10),
           selectedCompany && isValidUUID(selectedCompany.id)
             ? supabase.from("recommended_neighborhoods")
                 .select("*")
@@ -133,36 +129,66 @@ const NeighborhoodPage = () => {
 
         if (cancelled) return;
         if (nbRes.error) throw nbRes.error;
-        if (nbRes.data) {
-          setNeighborhood(nbRes.data);
-          document.title = `${nbRes.data.name} - 동네 상세 | ComHome`;
-        }
-        if (listRes.data) setListings(listRes.data as HousingListing[]);
+        if (!nbRes.data) throw new Error("동네 정보를 찾을 수 없습니다");
+
+        setNeighborhood(nbRes.data);
+        document.title = `${nbRes.data.name} - 동네 상세 | ComHome`;
         if (recRes.data) setRecommendation(recRes.data);
 
-        // housing_listings가 비어있으면 rent_stats 폴백 조회
-        if (!listRes.data || listRes.data.length === 0) {
-          const dongName = nbRes.data?.name;
-          if (dongName) {
-            const { data: statsData } = await supabase
-              .from("rent_stats")
-              .select("*")
-              .eq("dong_name", dongName)
-              .eq("housing_type", "mixed")
-              .order("base_ym", { ascending: false })
-              .limit(10);
-            if (!cancelled && statsData && statsData.length > 0) {
-              // 가장 최신 base_ym의 데이터를 사용, 불완전하면 차선 월로 fallback
-              const latestYm = statsData[0].base_ym;
-              const latestData = statsData.filter((s) => s.base_ym === latestYm);
-              if (latestData.length > 0 && latestData.some((s) => s.median_rent !== null)) {
-                setRentStats(latestData);
-              } else {
-                // 최신 월에 유효 데이터 없으면 전체에서 median_rent가 있는 첫 번째 base_ym 사용
-                const validRow = statsData.find((s) => s.median_rent !== null);
-                if (validRow) {
-                  setRentStats(statsData.filter((s) => s.base_ym === validRow.base_ym));
-                }
+        const legalDong = nbRes.data.legal_dong_name;
+        const regionCode = nbRes.data.region_code;
+
+        // rent_transactions에서 실거래 데이터 조회
+        // legal_dong_name이 있으면 LIKE 매칭, 없으면 name+"동" 폴백
+        let txQuery = supabase
+          .from("rent_transactions")
+          .select("id, housing_type, building_name, deposit, monthly_rent, area_sqm, floor, deal_date")
+          .order("deal_date", { ascending: false })
+          .limit(10);
+
+        if (legalDong) {
+          txQuery = txQuery.like("dong_name", `${escapeLikePattern(legalDong)}%`);
+        } else {
+          const dongName = nbRes.data.name;
+          const dongNameVariants = [dongName, dongName.endsWith("동") ? dongName : dongName + "동"];
+          txQuery = txQuery.in("dong_name", dongNameVariants);
+        }
+
+        if (regionCode) {
+          txQuery = txQuery.eq("region_code", regionCode);
+        }
+
+        const { data: txData } = await txQuery;
+
+        if (!cancelled && txData && txData.length > 0) {
+          setListings(txData);
+        } else {
+          // rent_transactions가 비어있으면 rent_stats 폴백 조회
+          let statsQuery = supabase
+            .from("rent_stats")
+            .select("*")
+            .eq("housing_type", "mixed")
+            .order("base_ym", { ascending: false })
+            .limit(10);
+
+          if (legalDong) {
+            statsQuery = statsQuery.like("dong_name", `${escapeLikePattern(legalDong)}%`);
+          } else {
+            const dongName = nbRes.data.name;
+            const dongNameVariants = [dongName, dongName.endsWith("동") ? dongName : dongName + "동"];
+            statsQuery = statsQuery.in("dong_name", dongNameVariants);
+          }
+
+          const { data: statsData } = await statsQuery;
+          if (!cancelled && statsData && statsData.length > 0) {
+            const latestYm = statsData[0].base_ym;
+            const latestData = statsData.filter((s) => s.base_ym === latestYm);
+            if (latestData.length > 0 && latestData.some((s) => s.median_rent !== null)) {
+              setRentStats(latestData);
+            } else {
+              const validRow = statsData.find((s) => s.median_rent !== null);
+              if (validRow) {
+                setRentStats(statsData.filter((s) => s.base_ym === validRow.base_ym));
               }
             }
           }
@@ -303,7 +329,7 @@ const NeighborhoodPage = () => {
           {income > 0 && (
             <AffordabilityGauge
               currentRent={currentRent}
-              newRent={neighborhood.avg_rent}
+              newRent={neighborhoodCosts[0]?.medianRent ?? neighborhood.avg_rent}
               income={income}
             />
           )}

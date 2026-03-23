@@ -6,7 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useSearchStore } from "@/stores/searchStore";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 import { toNeighborhoodCost, fareToMonthly } from "@/lib/costUtils";
+import { escapeLikePattern } from "@/lib/utils";
 import { calcCommuteTime, type CommuteResult } from "@/lib/commuteService";
 import CostInputForm from "@/components/cost/CostInputForm";
 import CostComparisonCards from "@/components/cost/CostComparisonCards";
@@ -45,6 +47,11 @@ const ComparePage = () => {
         setLocalCommutes(results);
         setCommuteFetchDone(true);
       }
+    }).catch(() => {
+      if (!cancelled) {
+        setCommuteFetchDone(true);
+        toast({ title: "통근 시간 조회 실패", description: "교통비는 추정값으로 표시됩니다", variant: "destructive" });
+      }
     });
     return () => { cancelled = true; };
   }, [compareList, commuteResults, selectedCompany]);
@@ -76,41 +83,72 @@ const ComparePage = () => {
     let cancelled = false;
 
     const fetchRentStats = async () => {
-      // neighborhoods 테이블에서 정확한 이름을 가져와 rent_stats와 매칭
+      // neighborhoods 테이블에서 legal_dong_name을 가져와 rent_stats와 매칭
       const ids = compareList.map((item) => item.id);
       const { data: nbData } = await supabase
         .from("neighborhoods")
-        .select("id, name")
+        .select("id, name, legal_dong_name")
         .in("id", ids);
 
-      const nameMap = new Map<string, string>(); // id → name (DB 기준)
-      if (nbData) {
-        for (const nb of nbData) nameMap.set(nb.id, nb.name);
-      }
+      if (!nbData || nbData.length === 0) return;
 
-      const dbNames = [...new Set(nbData?.map((nb) => nb.name) ?? compareList.map((item) => item.name))];
-      const { data } = await supabase
-        .from("rent_stats")
-        .select("dong_name, median_rent, base_ym")
-        .in("dong_name", dbNames)
-        .eq("housing_type", "mixed")
-        .order("base_ym", { ascending: false });
+      // id → { name, legal_dong_name } 매핑
+      const nbMap = new Map(nbData.map((nb) => [nb.id, nb]));
+
+      // legal_dong_name 기반 OR 조건으로 rent_stats 조회
+      const legalDongs = nbData
+        .map((nb) => nb.legal_dong_name)
+        .filter((d): d is string => d !== null);
+
+      let data: { dong_name: string; median_rent: number | null; base_ym: string }[] | null = null;
+
+      if (legalDongs.length > 0) {
+        const orFilter = legalDongs.map((d) => `dong_name.like.${escapeLikePattern(d)}%`).join(",");
+        const { data: statsData } = await supabase
+          .from("rent_stats")
+          .select("dong_name, median_rent, base_ym")
+          .or(orFilter)
+          .eq("housing_type", "mixed")
+          .order("base_ym", { ascending: false });
+        data = statsData;
+      } else {
+        // legal_dong_name이 없으면 기존 name+"동" 폴백
+        const dbNames = [...new Set(nbData.map((nb) => nb.name))];
+        const dongNameVariants = [...new Set(dbNames.flatMap((n) => [n, n.endsWith("동") ? n : n + "동"]))];
+        const { data: statsData } = await supabase
+          .from("rent_stats")
+          .select("dong_name, median_rent, base_ym")
+          .in("dong_name", dongNameVariants)
+          .eq("housing_type", "mixed")
+          .order("base_ym", { ascending: false });
+        data = statsData;
+      }
 
       if (cancelled || !data) return;
 
-      // 각 동네별 가장 최신 base_ym의 median_rent만 사용
-      const result: Record<string, number> = {};
+      // 각 dong_name별 가장 최신 base_ym의 median_rent만 사용
+      const dongResult: Record<string, number> = {};
       for (const row of data) {
-        if (!result[row.dong_name] && row.median_rent !== null) {
-          result[row.dong_name] = row.median_rent;
+        if (!dongResult[row.dong_name] && row.median_rent !== null) {
+          dongResult[row.dong_name] = row.median_rent;
         }
       }
 
-      // compareList의 name 기준으로도 매핑 (DB name이 다를 경우 대비)
+      // neighborhood.name 기준으로 매핑 (CostComparisonCards에서 name으로 접근)
+      const result: Record<string, number> = {};
       for (const item of compareList) {
-        const dbName = nameMap.get(item.id);
-        if (dbName && dbName !== item.name && result[dbName] && !result[item.name]) {
-          result[item.name] = result[dbName];
+        const nb = nbMap.get(item.id);
+        if (!nb) continue;
+        const legalDong = nb.legal_dong_name;
+        if (legalDong) {
+          // legal_dong_name과 매칭되는 dong_name 찾기 (LIKE 매칭이므로 prefix 비교)
+          const matched = Object.entries(dongResult).find(([key]) => key.startsWith(legalDong));
+          if (matched) result[item.name] = matched[1];
+        } else {
+          // 폴백: name 또는 name+"동"
+          const withDong = item.name.endsWith("동") ? item.name : item.name + "동";
+          if (dongResult[item.name]) result[item.name] = dongResult[item.name];
+          else if (dongResult[withDong]) result[item.name] = dongResult[withDong];
         }
       }
 

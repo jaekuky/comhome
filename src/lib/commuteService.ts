@@ -4,8 +4,8 @@ export interface CommuteResult {
   routeSummary: string;     // 예: '2호선 → 환승 → 3호선'
   transferCount: number;
   walkMinutes: number;
-  totalFare: number;        // 총 교통비 (원)
-  isEstimated: boolean;     // 혼잡도 가중치 적용 여부
+  totalFare: number;        // 편도 총 교통비 (원, KRW) — ODsay API payment 필드 기준. fareToMonthly()로 월간 환산
+  isEstimated: boolean;     // true면 캐시/폴백 데이터 (totalFare=0일 수 있음)
 }
 
 export interface OdsayServiceResult {

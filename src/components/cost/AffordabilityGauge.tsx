@@ -30,6 +30,7 @@ const GaugeBar = ({ label, rate, level }: { label: string; rate: number; level: 
 );
 
 const AffordabilityGauge = ({ currentRent, newRent, income }: AffordabilityGaugeProps) => {
+  if (income <= 0) return null;
   const currentRate = calcAffordabilityRate(currentRent, income);
   const newRate = calcAffordabilityRate(newRent, income);
   const currentLevel = getAffordabilityLevel(currentRate);
